@@ -140,7 +140,7 @@ public sealed class TlsHostService : IAsyncDisposable
                 byte[] signature;
                 try { signature = Convert.FromBase64String(signatureBase64); }
                 catch (FormatException) { await SendErrorAsync(writer, "Pairing proof signature is invalid."); return; }
-                if (!ecdsa.VerifyData(challenge, signature, HashAlgorithmName.SHA256))
+                if (!ecdsa.VerifyData(challenge, signature, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence))
                 { await SendErrorAsync(writer, "Android device identity proof failed."); return; }
 
                 if (!_pendingPairing.TryConsume(nonce))
