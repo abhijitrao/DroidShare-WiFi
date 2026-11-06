@@ -111,6 +111,19 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            LaunchedEffect(Unit) {
+                busy = true
+                status = "Checking for a previously paired Windows device…"
+                val result = withContext(Dispatchers.IO) { discoverAndHandshake(autoReconnectOnly = true) }
+                status = result.message
+                discoveredShares.value = result.shares
+                connectedEndpoint = if (
+                    result.host != null && result.tlsPort in 1..65535 &&
+                    result.windowsDeviceId.isNotBlank()
+                ) Triple(result.host, result.tlsPort, result.windowsDeviceId) else null
+                busy = false
+            }
+
             fun browseShare(share: RemoteShare, path: String) {
                 val endpoint = connectedEndpoint ?: return
                 scope.launch {
@@ -525,7 +538,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun discoverAndHandshake(): DiscoveryResult {
+    private fun discoverAndHandshake(autoReconnectOnly: Boolean = false): DiscoveryResult {
         val request = "DROIDSHARE_DISCOVER_V1".toByteArray(StandardCharsets.UTF_8)
         return try {
             DatagramSocket().use { udp ->
@@ -561,6 +574,12 @@ class MainActivity : ComponentActivity() {
                             windowsDeviceId
                         )
                     }
+                }
+
+                if (autoReconnectOnly) {
+                    return DiscoveryResult(
+                        "No previously paired Windows device found. Tap Find Windows device or scan its QR to connect."
+                    )
                 }
 
                 Socket().use { tcp ->
