@@ -391,6 +391,62 @@ public sealed class TlsHostService : IAsyncDisposable
                 continue;
             }
 
+            if (requestType == "CREATE_DIRECTORY")
+            {
+                var directoryRelativePath = GetString(request, "path");
+                if (string.IsNullOrWhiteSpace(directoryRelativePath) || directoryRelativePath.Length > 2048 ||
+                    directoryRelativePath.StartsWith('/') || directoryRelativePath.StartsWith('\\\\') ||
+                    directoryRelativePath.Split('/', '\\\\').Any(segment =>
+                        string.IsNullOrWhiteSpace(segment) || segment is "." or ".."))
+                {
+                    await SendErrorAsync(writer, "Folder path is invalid.");
+                    continue;
+                }
+
+                try
+                {
+                    if (!IsTrustedIdentity(deviceId, publicKeyBytes))
+                        throw new UnauthorizedAccessException("This Android device was revoked.");
+
+                    var directoryPath = _sharedFolders.ResolveAuthorizedPath(
+                        shareId, directoryRelativePath, ShareOperation.Write);
+                    if (File.Exists(directoryPath))
+                        throw new IOException("A file already exists with this folder name.");
+
+                    if (Directory.Exists(directoryPath))
+                    {
+                        var attributes = File.GetAttributes(directoryPath);
+                        if ((attributes & FileAttributes.ReparsePoint) != 0)
+                            throw new UnauthorizedAccessException("Reparse-point folders cannot be used.");
+                    }
+                    else
+                    {
+                        Directory.CreateDirectory(directoryPath);
+                    }
+
+                    if (!IsTrustedIdentity(deviceId, publicKeyBytes))
+                        throw new UnauthorizedAccessException("This Android device was revoked.");
+                    _ = _sharedFolders.ResolveAuthorizedPath(shareId, directoryRelativePath, ShareOperation.Write);
+                    await writer.WriteLineAsync(JsonSerializer.Serialize(new
+                    {
+                        type = "DIRECTORY_CREATED",
+                        protocolVersion = 1,
+                        path = directoryRelativePath
+                    }));
+                    await writer.FlushAsync(cancellationToken);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+                {
+                    await writer.WriteLineAsync(JsonSerializer.Serialize(new
+                    {
+                        type = "SESSION_ERROR",
+                        protocolVersion = 1,
+                        message = ex.Message
+                    }));
+                }
+                continue;
+            }
+
             if (requestType == "UPLOAD_FILE")
             {
                 var uploadRelativePath = GetString(request, "path");
