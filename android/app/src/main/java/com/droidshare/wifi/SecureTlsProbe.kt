@@ -3,6 +3,7 @@ package com.droidshare.wifi
 
 import android.content.Context
 import android.os.Build
+import android.net.Uri
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import org.json.JSONObject
@@ -266,6 +267,151 @@ object SecureTlsProbe {
             }
             return shares
         }
+    }
+
+    fun downloadFile(
+        context: Context,
+        host: String,
+        port: Int,
+        windowsDeviceId: String,
+        shareId: String,
+        relativePath: String,
+        destination: Uri,
+        onProgress: (Long, Long) -> Unit
+    ): String {
+        require(windowsDeviceId.matches(Regex("^[a-f0-9]{32}$"))) { "Invalid Windows device identity." }
+        require(shareId.matches(Regex("^[a-fA-F0-9-]{36}$"))) { "Invalid shared folder ID." }
+        require(relativePath.isNotBlank() && relativePath.length <= 2048 &&
+            !relativePath.startsWith("/") && !relativePath.startsWith("\\\\") &&
+            relativePath.split('/').none { it.isBlank() || it == "." || it == ".." || it.contains('\\') }) {
+            "Invalid shared file path."
+        }
+
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val fingerprint = prefs.getString("trusted_windows_" + windowsDeviceId, null)
+            ?: throw IllegalStateException("This Windows device is not paired.")
+        require(fingerprint.matches(Regex("^[a-f0-9]{64}$")) && fingerprint.take(32) == windowsDeviceId) {
+            "Saved Windows trust information is invalid."
+        }
+        val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        check(keyStore.containsAlias(KEY_ALIAS)) { "Android identity key is missing. Pair this device again." }
+        val publicKey = keyStore.getCertificate(KEY_ALIAS).publicKey
+        val privateKey = keyStore.getKey(KEY_ALIAS, null) as java.security.PrivateKey
+        val androidDeviceId = prefs.getString("android_device_id", null)
+            ?: throw IllegalStateException("Android device identity is missing. Pair this device again.")
+
+        val tlsContext = SSLContext.getInstance("TLS")
+        tlsContext.init(null, arrayOf(pinnedTrustManager(fingerprint)), SecureRandom())
+        val socket = tlsContext.socketFactory.createSocket() as SSLSocket
+        try {
+            socket.use { tls ->
+                tls.connect(InetSocketAddress(host, port), 5000)
+                tls.soTimeout = 30000
+                tls.enabledProtocols = tls.supportedProtocols.filter {
+                    it == "TLSv1.3" || it == "TLSv1.2"
+                }.toTypedArray()
+                check(tls.enabledProtocols.isNotEmpty()) { "TLS 1.2 or newer is required." }
+                tls.startHandshake()
+
+                writeLine(tls, JSONObject()
+                    .put("type", "SESSION_HELLO")
+                    .put("protocolVersion", 1)
+                    .put("androidDeviceId", androidDeviceId)
+                    .put("publicKey", android.util.Base64.encodeToString(publicKey.encoded, android.util.Base64.NO_WRAP)))
+
+                val challengeResponse = JSONObject(readLine(tls.inputStream))
+                check(challengeResponse.optString("type") == "SESSION_CHALLENGE" &&
+                    challengeResponse.optInt("protocolVersion") == 1) {
+                    challengeResponse.optString("message", "Windows rejected the secure session.")
+                }
+                val challenge = android.util.Base64.decode(challengeResponse.getString("challenge"), android.util.Base64.DEFAULT)
+                require(challenge.size == 32) { "Windows session challenge is malformed." }
+                val signer = Signature.getInstance("SHA256withECDSA")
+                signer.initSign(privateKey)
+                signer.update(challenge)
+                writeLine(tls, JSONObject()
+                    .put("type", "SESSION_PROOF")
+                    .put("protocolVersion", 1)
+                    .put("signature", android.util.Base64.encodeToString(signer.sign(), android.util.Base64.NO_WRAP)))
+
+                val ready = JSONObject(readLine(tls.inputStream))
+                check(ready.optString("type") == "SESSION_READY" &&
+                    ready.optInt("protocolVersion") == 1 &&
+                    ready.optString("windowsDeviceId") == windowsDeviceId) {
+                    ready.optString("message", "Windows session identity did not match the saved trust record.")
+                }
+                val shares = ready.optJSONArray("shares") ?: org.json.JSONArray()
+                check((0 until shares.length()).any { shares.getJSONObject(it).optString("shareId") == shareId }) {
+                    "This shared folder is no longer available for reading."
+                }
+
+                writeLine(tls, JSONObject()
+                    .put("type", "DOWNLOAD_FILE")
+                    .put("protocolVersion", 1)
+                    .put("shareId", shareId)
+                    .put("path", relativePath))
+
+                val start = JSONObject(readLine(tls.inputStream))
+                if (start.optString("type") == "SESSION_ERROR" || start.optString("type") == "PAIR_ERROR")
+                    throw IllegalStateException(start.optString("message", "Windows could not open this file."))
+                check(start.optString("type") == "FILE_START" && start.optInt("protocolVersion") == 1) {
+                    "Windows returned an invalid file-transfer response."
+                }
+                val expectedSize = start.optLong("size", -1)
+                require(expectedSize >= 0) { "Windows returned an invalid file size." }
+                val digest = MessageDigest.getInstance("SHA-256")
+                var received = 0L
+                var expectedSequence = 0L
+                val output = context.contentResolver.openOutputStream(destination, "w")
+                    ?: throw IllegalStateException("Android could not open the selected destination.")
+                output.use { target ->
+                    while (received < expectedSize) {
+                        val frame = JSONObject(readLine(tls.inputStream))
+                        if (frame.optString("type") == "SESSION_ERROR")
+                            throw IllegalStateException(frame.optString("message", "Windows stopped the transfer."))
+                        check(frame.optString("type") == "FILE_CHUNK" &&
+                            frame.optInt("protocolVersion") == 1 &&
+                            frame.optLong("sequence", -1) == expectedSequence) {
+                            "File transfer chunk sequence is invalid."
+                        }
+                        val bytes = android.util.Base64.decode(frame.getString("data"), android.util.Base64.DEFAULT)
+                        require(bytes.isNotEmpty() && bytes.size <= 8 * 1024 &&
+                            received + bytes.size <= expectedSize) { "File transfer chunk size is invalid." }
+                        target.write(bytes)
+                        digest.update(bytes)
+                        received += bytes.size
+                        expectedSequence++
+                        onProgress(received, expectedSize)
+                    }
+                    target.flush()
+                }
+
+                val end = JSONObject(readLine(tls.inputStream))
+                check(end.optString("type") == "FILE_END" &&
+                    end.optInt("protocolVersion") == 1 &&
+                    end.optLong("bytesSent", -1) == expectedSize &&
+                    received == expectedSize) {
+                    "Windows did not complete the file transfer."
+                }
+                val actualHash = digest.digest().joinToString("") { byte -> "%02x".format(byte) }
+                val expectedHash = end.optString("sha256")
+                check(expectedHash.matches(Regex("^[a-f0-9]{64}$")) &&
+                    actualHash.equals(expectedHash, ignoreCase = true)) {
+                    "SHA-256 verification failed. The downloaded file may be incomplete or corrupted."
+                }
+                return "Download complete · \${formatBytes(received)} · SHA-256 verified"
+            }
+        } catch (error: Exception) {
+            runCatching { context.contentResolver.delete(destination, null, null) }
+            throw error
+        }
+    }
+
+    private fun formatBytes(value: Long): String = when {
+        value >= 1024L * 1024 * 1024 -> "%.2f GB".format(value / (1024.0 * 1024 * 1024))
+        value >= 1024L * 1024 -> "%.1f MB".format(value / (1024.0 * 1024))
+        value >= 1024L -> "%.1f KB".format(value / 1024.0)
+        else -> "\$value B"
     }
 
     private fun pinnedTrustManager(expectedFingerprint: String): X509TrustManager =
