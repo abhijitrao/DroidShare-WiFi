@@ -43,7 +43,19 @@ Windows replies:
 {"type":"WELCOME","protocolVersion":1,"server":"DroidShare-WiFi"}
 ```
 
-Any unsupported message type or protocol version must be rejected. Close idle diagnostic connections after a short timeout.
+Android then sends:
+
+```json
+{"type":"PING","protocolVersion":1}
+```
+
+Windows replies:
+
+```json
+{"type":"PONG","protocolVersion":1}
+```
+
+Android displays the measured round-trip time. This is a connectivity diagnostic, not a throughput benchmark. The server closes idle diagnostic connections after five seconds. Unsupported message types or protocol versions are rejected. Both implementations enforce the 16 KiB control-line limit.
 
 ## Production protocol requirements (later phase)
 Before file transfer or remote folder access is enabled:
