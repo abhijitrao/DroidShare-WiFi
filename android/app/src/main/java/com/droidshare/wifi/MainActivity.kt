@@ -5,6 +5,12 @@ import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.background
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -45,71 +51,158 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme {
-                var status by remember { mutableStateOf("Ready to discover a Windows device") }
-                var busy by remember { mutableStateOf(false) }
-                var tlsStatus by remember { mutableStateOf("Pairing has not been attempted.") }
-                val scope = rememberCoroutineScope()
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
-                        Text("DroidShare-WiFi", style = MaterialTheme.typography.headlineMedium)
-                        Spacer(Modifier.height(8.dp))
-                        Text("Phase 1 · Local and secure connection test")
-                        Spacer(Modifier.height(20.dp))
-                        Text(status, style = MaterialTheme.typography.bodyLarge)
-                        Spacer(Modifier.height(16.dp))
-                        Button(
-                            modifier = Modifier.fillMaxWidth(),
-                            enabled = !busy,
-                            onClick = {
-                                scope.launch {
-                                    busy = true
-                                    status = "Searching local Wi-Fi network…"
-                                    status = withContext(Dispatchers.IO) { discoverAndHandshake() }
-                                    busy = false
+            val ink = androidx.compose.ui.graphics.Color(0xFF182033)
+            val muted = androidx.compose.ui.graphics.Color(0xFF6B7890)
+            val canvas = androidx.compose.ui.graphics.Color(0xFFF5F6FB)
+            val violet = androidx.compose.ui.graphics.Color(0xFF6554C0)
+            val green = androidx.compose.ui.graphics.Color(0xFF16865B)
+            var status by remember { mutableStateOf("Ready to discover a Windows device") }
+            var busy by remember { mutableStateOf(false) }
+            var tlsStatus by remember { mutableStateOf("Pairing has not been attempted.") }
+            val scope = rememberCoroutineScope()
+
+            MaterialTheme(
+                colorScheme = lightColorScheme(
+                    primary = violet,
+                    onPrimary = androidx.compose.ui.graphics.Color.White,
+                    background = canvas,
+                    surface = androidx.compose.ui.graphics.Color.White,
+                    onSurface = ink
+                )
+            ) {
+                Surface(modifier = Modifier.fillMaxSize(), color = canvas) {
+                    Column(
+                        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 28.dp)
+                    ) {
+                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            Surface(
+                                color = violet,
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
+                                modifier = Modifier.size(48.dp)
+                            ) {
+                                Box(contentAlignment = androidx.compose.ui.Alignment.Center) {
+                                    Text("D", color = androidx.compose.ui.graphics.Color.White,
+                                        style = MaterialTheme.typography.headlineSmall,
+                                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                                 }
                             }
-                        ) { Text(if (busy) "Searching…" else "Find Windows device") }
-
-                        Spacer(Modifier.height(12.dp))
-                        OutlinedButton(
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = {
-                                val options = ScanOptions()
-                                    .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
-                                    .setPrompt("Scan the QR displayed by DroidShare-WiFi on Windows")
-                                    .setBeepEnabled(false)
-                                    .setOrientationLocked(false)
-                                scannerLauncher.launch(options)
+                            Spacer(Modifier.width(12.dp))
+                            Column {
+                                Text("DroidShare", style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = ink)
+                                Text("PRIVATE • LOCAL • SECURE", style = MaterialTheme.typography.labelSmall,
+                                    color = muted, letterSpacing = androidx.compose.ui.unit.sp(1.2f))
                             }
-                        ) { Text("Scan Windows pairing QR") }
+                        }
 
-                        Spacer(Modifier.height(12.dp))
-                        Text(scanMessage.value, style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.height(28.dp))
+                        Text("Your devices,", style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = ink)
+                        Text("connected privately.", style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = violet)
+                        Spacer(Modifier.height(8.dp))
+                        Text("Share files over your local Wi-Fi. No cloud account or internet required.",
+                            style = MaterialTheme.typography.bodyMedium, color = muted)
+
+                        Spacer(Modifier.height(22.dp))
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+                            colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                        ) {
+                            Column(Modifier.padding(18.dp)) {
+                                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                                    Text("LOCAL NETWORK", style = MaterialTheme.typography.labelMedium,
+                                        color = muted, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                                    Spacer(Modifier.weight(1f))
+                                    Surface(color = androidx.compose.ui.graphics.Color(0xFFE9F7F0),
+                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(30.dp)) {
+                                        Text("●  READY", modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                            color = green, style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                                    }
+                                }
+                                Spacer(Modifier.height(10.dp))
+                                Text(status, color = ink, style = MaterialTheme.typography.bodyLarge)
+                                Spacer(Modifier.height(14.dp))
+                                Button(
+                                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                                    enabled = !busy,
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
+                                    onClick = {
+                                        scope.launch {
+                                            busy = true
+                                            status = "Searching local Wi-Fi network…"
+                                            status = withContext(Dispatchers.IO) { discoverAndHandshake() }
+                                            busy = false
+                                        }
+                                    }
+                                ) {
+                                    if (busy) CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp), strokeWidth = 2.dp,
+                                        color = androidx.compose.ui.graphics.Color.White
+                                    ) else Text("Find Windows device")
+                                }
+                                Spacer(Modifier.height(10.dp))
+                                OutlinedButton(
+                                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                                    enabled = !busy,
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
+                                    onClick = {
+                                        val options = ScanOptions()
+                                            .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                                            .setPrompt("Scan the QR displayed by DroidShare-WiFi on Windows")
+                                            .setBeepEnabled(false)
+                                            .setOrientationLocked(false)
+                                        scannerLauncher.launch(options)
+                                    }
+                                ) { Text("Scan Windows pairing QR") }
+                            }
+                        }
+
+                        Spacer(Modifier.height(18.dp))
+                        Text("SECURE PAIRING", style = MaterialTheme.typography.labelMedium,
+                            color = muted, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                        Spacer(Modifier.height(8.dp))
+                        Text(scanMessage.value, style = MaterialTheme.typography.bodyMedium, color = ink)
                         scannedQr.value?.let { pairing ->
-                            Spacer(Modifier.height(8.dp))
-                            Card(modifier = Modifier.fillMaxWidth()) {
-                                Column(Modifier.padding(12.dp)) {
-                                    Text(pairing.deviceName, style = MaterialTheme.typography.titleMedium)
-                                    Text("${pairing.host}:${pairing.port}")
+                            Spacer(Modifier.height(10.dp))
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+                                colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                            ) {
+                                Column(Modifier.padding(18.dp)) {
+                                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text(pairing.deviceName, style = MaterialTheme.typography.titleLarge,
+                                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = ink)
+                                            Text("Windows device", style = MaterialTheme.typography.bodySmall, color = muted)
+                                        }
+                                        Surface(color = androidx.compose.ui.graphics.Color(0xFFE9F7F0),
+                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(30.dp)) {
+                                            Text("QR VERIFIED", modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                color = green, style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                                        }
+                                    }
+                                    Spacer(Modifier.height(12.dp))
+                                    Text("\${pairing.host}:\${pairing.port}", color = ink,
+                                        style = MaterialTheme.typography.bodyMedium)
+                                    Text("Certificate SHA-256", color = muted, style = MaterialTheme.typography.labelSmall)
+                                    Text(pairing.certificateSha256, color = muted, style = MaterialTheme.typography.bodySmall)
                                     Text(
-                                        "Certificate SHA-256: ${pairing.certificateSha256}",
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                    Text(
-                                        "Expires: ${DateTimeFormatter.ofPattern("HH:mm:ss")
+                                        "QR expires \${DateTimeFormatter.ofPattern("HH:mm:ss")
                                             .withZone(ZoneId.systemDefault()).format(pairing.expiresAt)}",
-                                        style = MaterialTheme.typography.bodySmall
+                                        color = muted, style = MaterialTheme.typography.labelSmall
                                     )
-                                    Text(
-                                        "Connect securely verifies the Windows certificate, requests Windows approval, and proves this Android device identity.",
-                                        color = MaterialTheme.colorScheme.error,
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                    Spacer(Modifier.height(10.dp))
+                                    Spacer(Modifier.height(14.dp))
                                     Button(
-                                        modifier = Modifier.fillMaxWidth(),
+                                        modifier = Modifier.fillMaxWidth().height(52.dp),
                                         enabled = !busy && pairing.expiresAt.isAfter(java.time.Instant.now()),
+                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
                                         onClick = {
                                             scope.launch {
                                                 busy = true
@@ -118,24 +211,43 @@ class MainActivity : ComponentActivity() {
                                                     try {
                                                         SecureTlsProbe.connect(this@MainActivity, pairing)
                                                     } catch (error: Exception) {
-                                                        "TLS connection failed: " + (error.localizedMessage ?: error.javaClass.simpleName)
+                                                        "Connection failed: " + (error.localizedMessage ?: error.javaClass.simpleName)
                                                     }
                                                 }
                                                 busy = false
                                             }
                                         }
                                     ) { Text(if (busy) "Connecting…" else "Connect securely") }
-                                    Text(tlsStatus, style = MaterialTheme.typography.bodySmall)
+                                    Spacer(Modifier.height(10.dp))
+                                    Surface(
+                                        color = if (tlsStatus.startsWith("Paired")) androidx.compose.ui.graphics.Color(0xFFE9F7F0)
+                                            else androidx.compose.ui.graphics.Color(0xFFF1F2F7),
+                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                                    ) {
+                                        Text(tlsStatus, modifier = Modifier.padding(12.dp),
+                                            color = if (tlsStatus.startsWith("Paired")) green else ink,
+                                            style = MaterialTheme.typography.bodySmall)
+                                    }
                                 }
                             }
                         }
 
-                        Spacer(Modifier.height(20.dp))
-                        Text(
-                            "Both devices must be connected to a network that allows local device communication. " +
-                                "Secure pairing verifies both device identities. File sharing is not enabled yet.",
-                            style = MaterialTheme.typography.bodySmall
-                        )
+                        Spacer(Modifier.height(22.dp))
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color(0xFFECEBFA))
+                        ) {
+                            Column(Modifier.padding(16.dp)) {
+                                Text("Coming next", color = violet, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                                Spacer(Modifier.height(4.dp))
+                                Text("Browse Windows shared folders and transfer files securely. Your files stay on your local network.",
+                                    color = ink, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                        Spacer(Modifier.height(18.dp))
+                        Text("Both devices must allow local device communication. QR pairing does not bypass Wi-Fi client isolation or firewall rules.",
+                            style = MaterialTheme.typography.bodySmall, color = muted)
                     }
                 }
             }
