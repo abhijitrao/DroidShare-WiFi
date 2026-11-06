@@ -66,6 +66,32 @@ class MainActivity : ComponentActivity() {
             var connectedEndpoint by remember { mutableStateOf<Triple<String, Int, String>?>(null) }
             val scope = rememberCoroutineScope()
 
+            fun browseShare(share: RemoteShare, path: String) {
+                val endpoint = connectedEndpoint ?: return
+                scope.launch {
+                    busy = true
+                    status = if (path.isBlank()) "Opening shared folder…" else "Opening $path…"
+                    val result = withContext(Dispatchers.IO) {
+                        runCatching {
+                            SecureTlsProbe.connectTrusted(
+                                this@MainActivity, endpoint.first, endpoint.second, endpoint.third,
+                                share.shareId, path
+                            ).firstOrNull { it.shareId == share.shareId }
+                                ?: throw IllegalStateException("The shared folder is no longer available.")
+                        }
+                    }
+                    result.onSuccess { browsed ->
+                        discoveredShares.value = discoveredShares.value.map {
+                            if (it.shareId == share.shareId) browsed else it
+                        }
+                        status = "Folder loaded."
+                    }.onFailure {
+                        status = "Could not open folder: " + (it.localizedMessage ?: "Connection error")
+                    }
+                    busy = false
+                }
+            }
+
             MaterialTheme(
                 colorScheme = lightColorScheme(
                     primary = violet,
@@ -273,26 +299,23 @@ class MainActivity : ComponentActivity() {
                                             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                                                 TextButton(
                                                     enabled = !busy && connectedEndpoint != null,
-                                                    onClick = {
-                                                        val parent = share.currentPath.substringBeforeLast('/', "")
-                                                        val endpoint = connectedEndpoint
-                                                        if (endpoint != null) scope.launch {
-                                                            busy = true
-                                                            status = "Opening parent folder…"
-                                                            val result = withContext(Dispatchers.IO) {
-                                                                runCatching { SecureTlsProbe.connectTrusted(this@MainActivity, endpoint.first, endpoint.second, endpoint.third, share.shareId, parent) }
-                                                            }
-                                                            result.onSuccess { browsed ->
-                                                                discoveredShares.value = discoveredShares.value.map { if (it.shareId == share.shareId) browsed.firstOrNull { item -> item.shareId == share.shareId } ?: it else it }
-                                                                status = "Folder loaded."
-                                                            }.onFailure { status = "Could not open folder: " + (it.localizedMessage ?: "Connection error") }
-                                                            busy = false
-                                                        }
-                                                    }
+                                                    onClick = { browseShare(share, share.currentPath.substringBeforeLast('/', "")) }
                                                 ) { Text("← Back") }
                                                 Spacer(Modifier.width(4.dp))
-                                                Text(if (share.currentPath.isBlank()) share.name else share.currentPath.replace('/', '›'),
-                                                    color = muted, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                                                TextButton(
+                                                    enabled = !busy && connectedEndpoint != null,
+                                                    onClick = { browseShare(share, "") }
+                                                ) { Text(share.name) }
+                                                var breadcrumbPath = ""
+                                                share.currentPath.split('/').filter { it.isNotBlank() }.forEach { segment ->
+                                                    breadcrumbPath = if (breadcrumbPath.isBlank()) segment else breadcrumbPath + "/" + segment
+                                                    Text("›", color = muted)
+                                                    val targetPath = breadcrumbPath
+                                                    TextButton(
+                                                        enabled = !busy && connectedEndpoint != null,
+                                                        onClick = { browseShare(share, targetPath) }
+                                                    ) { Text(segment, maxLines = 1) }
+                                                }
                                             }
                                         } else {
                                             Text("Shared folder", color = muted, style = MaterialTheme.typography.labelSmall)
@@ -310,18 +333,7 @@ class MainActivity : ComponentActivity() {
                                                             val endpoint = connectedEndpoint
                                                             if (endpoint != null) {
                                                                 val childPath = if (share.currentPath.isBlank()) entry.name else share.currentPath + "/" + entry.name
-                                                                scope.launch {
-                                                                    busy = true
-                                                                    status = "Opening ${entry.name}…"
-                                                                    val result = withContext(Dispatchers.IO) {
-                                                                        runCatching { SecureTlsProbe.connectTrusted(this@MainActivity, endpoint.first, endpoint.second, endpoint.third, share.shareId, childPath) }
-                                                                    }
-                                                                    result.onSuccess { browsed ->
-                                                                        discoveredShares.value = discoveredShares.value.map { if (it.shareId == share.shareId) browsed.firstOrNull { item -> item.shareId == share.shareId } ?: it else it }
-                                                                        status = "Folder loaded."
-                                                                    }.onFailure { status = "Could not open folder: " + (it.localizedMessage ?: "Connection error") }
-                                                                    busy = false
-                                                                }
+                                                                browseShare(share, childPath)
                                                             }
                                                         } else Modifier),
                                                     verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
