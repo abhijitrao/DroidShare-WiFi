@@ -17,6 +17,7 @@ public sealed class TlsHostService : IAsyncDisposable
     private readonly X509Certificate2 _certificate;
     private readonly PendingPairingRegistry _pendingPairing;
     private readonly TrustedDeviceStore _trustedDevices;
+    private readonly SharedFolderStore _sharedFolders;
     private readonly Func<PairingApprovalRequest, Task<bool>> _approvePairing;
     private readonly CancellationTokenSource _shutdown = new();
     private TcpListener? _listener;
@@ -24,11 +25,13 @@ public sealed class TlsHostService : IAsyncDisposable
     public event Action<string>? SecureClientConnected;
 
     public TlsHostService(X509Certificate2 certificate, PendingPairingRegistry pendingPairing,
-        TrustedDeviceStore trustedDevices, Func<PairingApprovalRequest, Task<bool>> approvePairing)
+        TrustedDeviceStore trustedDevices, SharedFolderStore sharedFolders,
+        Func<PairingApprovalRequest, Task<bool>> approvePairing)
     {
         _certificate = certificate ?? throw new ArgumentNullException(nameof(certificate));
         _pendingPairing = pendingPairing;
         _trustedDevices = trustedDevices;
+        _sharedFolders = sharedFolders;
         _approvePairing = approvePairing;
         if (!certificate.HasPrivateKey) throw new ArgumentException("TLS certificate must have a private key.", nameof(certificate));
     }
@@ -82,7 +85,13 @@ public sealed class TlsHostService : IAsyncDisposable
                 if (string.IsNullOrWhiteSpace(helloLine)) return;
                 using var helloDoc = JsonDocument.Parse(helloLine);
                 var hello = helloDoc.RootElement;
-                if (GetString(hello, "type") != "PAIR_HELLO" || GetInt(hello, "protocolVersion") != 1)
+                var requestType = GetString(hello, "type");
+                if (requestType == "SESSION_HELLO")
+                {
+                    await HandleAuthenticatedSessionAsync(hello, reader, writer, timeout.Token);
+                    return;
+                }
+                if (requestType != "PAIR_HELLO" || GetInt(hello, "protocolVersion") != 1)
                 { await SendErrorAsync(writer, "Unsupported pairing request."); return; }
 
                 var nonce = GetString(hello, "nonce");
@@ -173,6 +182,178 @@ public sealed class TlsHostService : IAsyncDisposable
                     _pendingPairing.Release(reservedNonce);
             }
         }
+    }
+
+
+    private async Task HandleAuthenticatedSessionAsync(JsonElement hello, StreamReader reader,
+        StreamWriter writer, CancellationToken cancellationToken)
+    {
+        if (GetInt(hello, "protocolVersion") != 1)
+        { await SendErrorAsync(writer, "Unsupported session protocol."); return; }
+
+        var deviceId = GetString(hello, "androidDeviceId");
+        var publicKeyBase64 = GetString(hello, "publicKey");
+        if (deviceId is null || !Guid.TryParse(deviceId, out _) ||
+            publicKeyBase64 is null || publicKeyBase64.Length > 4096)
+        { await SendErrorAsync(writer, "Session identity fields are invalid."); return; }
+
+        byte[] publicKeyBytes;
+        using var identity = ECDsa.Create();
+        try
+        {
+            publicKeyBytes = Convert.FromBase64String(publicKeyBase64);
+            identity.ImportSubjectPublicKeyInfo(publicKeyBytes, out var bytesRead);
+            if (bytesRead != publicKeyBytes.Length || identity.KeySize != 256)
+                throw new CryptographicException("Expected P-256 public key.");
+        }
+        catch (Exception ex) when (ex is FormatException or CryptographicException)
+        { await SendErrorAsync(writer, "Android public key is invalid."); return; }
+
+        if (!IsTrustedIdentity(deviceId, publicKeyBytes))
+        { await SendErrorAsync(writer, "This Android device is not trusted. Pair it again on Windows."); return; }
+
+        var challenge = RandomNumberGenerator.GetBytes(32);
+        await writer.WriteLineAsync(JsonSerializer.Serialize(new
+        {
+            type = "SESSION_CHALLENGE",
+            protocolVersion = 1,
+            challenge = Convert.ToBase64String(challenge)
+        }));
+
+        var proofLine = await ReadLineAsync(reader, cancellationToken);
+        if (string.IsNullOrWhiteSpace(proofLine)) return;
+        using var proofDocument = JsonDocument.Parse(proofLine);
+        var proof = proofDocument.RootElement;
+        if (GetString(proof, "type") != "SESSION_PROOF" ||
+            GetInt(proof, "protocolVersion") != 1 ||
+            GetString(proof, "signature") is not { } signatureText)
+        { await SendErrorAsync(writer, "Session proof message is invalid."); return; }
+
+        byte[] signature;
+        try { signature = Convert.FromBase64String(signatureText); }
+        catch (FormatException) { await SendErrorAsync(writer, "Session proof signature is invalid."); return; }
+
+        if (!identity.VerifyData(challenge, signature, HashAlgorithmName.SHA256,
+                DSASignatureFormat.Rfc3279DerSequence))
+        { await SendErrorAsync(writer, "Android device authentication failed."); return; }
+
+        // Re-check trust after proof and immediately before each directory operation.
+        if (!IsTrustedIdentity(deviceId, publicKeyBytes))
+        { await SendErrorAsync(writer, "This Android device was revoked."); return; }
+
+        var certFingerprint = WindowsIdentityService.GetSha256Fingerprint(_certificate);
+        var visibleShares = _sharedFolders.GetAll()
+            .Where(share => share.CanRead)
+            .Select(share => new
+            {
+                shareId = share.ShareId,
+                name = share.DisplayName,
+                canRead = share.CanRead,
+                canWrite = share.CanWrite,
+                canDelete = share.CanDelete,
+                canStream = share.CanStream
+            }).ToArray();
+
+        await writer.WriteLineAsync(JsonSerializer.Serialize(new
+        {
+            type = "SESSION_READY",
+            protocolVersion = 1,
+            windowsDeviceId = certFingerprint[..32],
+            deviceName = Environment.MachineName,
+            shares = visibleShares
+        }));
+
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var line = await ReadLineAsync(reader, cancellationToken);
+            if (string.IsNullOrWhiteSpace(line)) return;
+            using var requestDocument = JsonDocument.Parse(line);
+            var request = requestDocument.RootElement;
+            if (GetInt(request, "protocolVersion") != 1 ||
+                GetString(request, "type") != "LIST_DIRECTORY")
+            {
+                await SendErrorAsync(writer, "Unsupported authenticated session request.");
+                continue;
+            }
+
+            if (!IsTrustedIdentity(deviceId, publicKeyBytes))
+            {
+                await SendErrorAsync(writer, "This Android device was revoked.");
+                return;
+            }
+
+            if (!Guid.TryParse(GetString(request, "shareId"), out var shareId))
+            {
+                await SendErrorAsync(writer, "Shared folder ID is invalid.");
+                continue;
+            }
+
+            var relativePath = GetString(request, "path") ?? "";
+            if (relativePath.Length > 2048)
+            {
+                await SendErrorAsync(writer, "Folder path is too long.");
+                continue;
+            }
+
+            try
+            {
+                var directoryPath = _sharedFolders.ResolveAuthorizedPath(shareId, relativePath, ShareOperation.Read);
+                if (!Directory.Exists(directoryPath))
+                    throw new DirectoryNotFoundException("The requested folder does not exist.");
+
+                var entries = new List<object>();
+                foreach (var entryPath in Directory.EnumerateFileSystemEntries(directoryPath)
+                             .OrderBy(path => Directory.Exists(path) ? 0 : 1)
+                             .ThenBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
+                             .Take(501))
+                {
+                    var attributes = File.GetAttributes(entryPath);
+                    if ((attributes & FileAttributes.ReparsePoint) != 0) continue;
+                    var isDirectory = (attributes & FileAttributes.Directory) != 0;
+                    var info = isDirectory ? (FileSystemInfo)new DirectoryInfo(entryPath) : new FileInfo(entryPath);
+                    entries.Add(new
+                    {
+                        name = info.Name,
+                        isDirectory,
+                        size = isDirectory ? 0L : ((FileInfo)info).Length,
+                        modifiedUtc = info.LastWriteTimeUtc
+                    });
+                    if (entries.Count == 500) break;
+                }
+
+                await writer.WriteLineAsync(JsonSerializer.Serialize(new
+                {
+                    type = "DIRECTORY_LIST",
+                    protocolVersion = 1,
+                    shareId,
+                    path = relativePath,
+                    entries,
+                    truncated = Directory.EnumerateFileSystemEntries(directoryPath).Skip(500).Any()
+                }));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+            {
+                await writer.WriteLineAsync(JsonSerializer.Serialize(new
+                {
+                    type = "SESSION_ERROR",
+                    protocolVersion = 1,
+                    message = ex.Message
+                }));
+            }
+        }
+    }
+
+    private bool IsTrustedIdentity(string deviceId, byte[] publicKeyBytes)
+    {
+        var trusted = _trustedDevices.GetAll()
+            .FirstOrDefault(device => device.DeviceId == deviceId && !device.IsRevoked);
+        if (trusted is null) return false;
+        try
+        {
+            return CryptographicOperations.FixedTimeEquals(
+                Convert.FromBase64String(trusted.PublicKeyBase64), publicKeyBytes);
+        }
+        catch (FormatException) { return false; }
     }
 
     private static string? GetString(JsonElement e, string n) =>
