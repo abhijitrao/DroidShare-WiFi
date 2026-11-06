@@ -1,7 +1,7 @@
 # DroidShare-WiFi Local Protocol (v1 draft)
 
 ## Status
-The current implementation supports UDP discovery, certificate-pinned TLS, first-time pairing, authenticated trusted-session re-establishment, Windows shared-folder listing, and root-directory metadata browsing. File upload/download, nested directory navigation, and Android trust management are not implemented. No file content read/write/delete/stream operation is exposed.
+The current implementation supports UDP discovery, certificate-pinned TLS, first-time pairing, authenticated trusted-session re-establishment, Windows shared-folder listing, and nested directory metadata browsing on Android. Android supports clickable breadcrumbs and back navigation. File upload/download and Android trust management are not implemented. No file content read/write/delete/stream operation is exposed.
 
 ## Existing diagnostic transport
 - Discovery: IPv4 UDP broadcast on port 45820.
@@ -98,9 +98,9 @@ The Android implementation uses an Android Keystore P-256 signing key. Windows s
 - For reconnect, Android pins the stored certificate, sends `SESSION_HELLO` with its device ID and public key, receives a fresh 256-bit `SESSION_CHALLENGE`, and signs it using the Android Keystore key in `SESSION_PROOF`.
 - Windows checks the active trusted-device record and exact public key before issuing the challenge, verifies the proof, then re-checks trust before returning `SESSION_READY`.
 - `SESSION_READY` returns only shares with Read permission. It includes opaque share IDs, display names, and permission flags; absolute Windows paths are never sent.
-- Android requests a root listing with `LIST_DIRECTORY` (`shareId`, empty `path`). Windows re-checks trust and Read permission, resolves the path beneath the configured share root, skips reparse points, and returns up to 500 entry names/types/sizes/timestamps, with the serialized response capped at 12 KiB in `DIRECTORY_LIST`.
+- Android requests a directory listing with `LIST_DIRECTORY` (`shareId`, relative `path`). Windows re-checks trust and Read permission, resolves the path beneath the configured share root, skips reparse points, and returns up to 500 entry names/types/sizes/timestamps, with the serialized response capped at 12 KiB in `DIRECTORY_LIST`. Android validates the relative path, supports nested folder navigation, and displays clickable root/ancestor breadcrumbs plus back navigation. Each navigation currently establishes a fresh authenticated TLS session.
 - Trust is checked again before each listing request so a revoked device cannot continue browsing on an existing session. Session connections have a 45-second server-side lifetime.
-- This is metadata browsing only. No file contents are transferred, and upload/download/write/delete/stream APIs remain disabled. Nested folder navigation is a follow-up.
+- This is metadata browsing only. No file contents are transferred, and upload/download/write/delete/stream APIs remain disabled.
 - The Windows path guard remains a lexical and reparse-point defense; before file content operations are enabled, use handle-based/reparse-safe operations to mitigate TOCTOU races.
 
 ## Compatibility and future transfer protocol
