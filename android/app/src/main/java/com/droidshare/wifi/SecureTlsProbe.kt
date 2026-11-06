@@ -1,23 +1,6 @@
 package com.droidshare.wifi
 
 
-data class RemoteDirectoryEntry(
-    val name: String,
-    val isDirectory: Boolean,
-    val size: Long,
-    val modifiedUtc: String
-)
-
-data class RemoteShare(
-    val shareId: String,
-    val name: String,
-    val canWrite: Boolean,
-    val canDelete: Boolean,
-    val canStream: Boolean,
-    val entries: List<RemoteDirectoryEntry>,
-    val truncated: Boolean
-)
-
 import android.content.Context
 import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
@@ -35,6 +18,23 @@ import java.util.UUID
 import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLSocket
 import javax.net.ssl.X509TrustManager
+
+data class RemoteDirectoryEntry(
+    val name: String,
+    val isDirectory: Boolean,
+    val size: Long,
+    val modifiedUtc: String
+)
+
+data class RemoteShare(
+    val shareId: String,
+    val name: String,
+    val canWrite: Boolean,
+    val canDelete: Boolean,
+    val canStream: Boolean,
+    val entries: List<RemoteDirectoryEntry>,
+    val truncated: Boolean
+)
 
 object SecureTlsProbe {
     private const val KEY_ALIAS = "droidshare_android_pairing_v1"
