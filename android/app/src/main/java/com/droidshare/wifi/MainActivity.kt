@@ -139,49 +139,71 @@ class MainActivity : ComponentActivity() {
             }
 
             val uploadLauncher = rememberLauncherForActivityResult(
-                ActivityResultContracts.OpenDocument()
-            ) { source ->
+                ActivityResultContracts.OpenMultipleDocuments()
+            ) { selectedUris ->
                 val share = pendingUpload
                 val endpoint = connectedEndpoint
                 pendingUpload = null
-                if (source == null) {
+                if (selectedUris.isEmpty()) {
                     transferStatus = "Upload cancelled."
                 } else if (share != null && endpoint != null) {
-                    runCatching {
-                        contentResolver.takePersistableUriPermission(source, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    }
-                    scope.launch {
-                        busy = true
-                        transferBytes = 0L
-                        transferTotal = 0L
-                        transferSpeed = 0L
-                        transferStatus = "Preparing secure upload…"
-                        val transferStartedAt = SystemClock.elapsedRealtime()
-                        val result = withContext(Dispatchers.IO) {
+                    val sources = runCatching {
+                        selectedUris.map { uri ->
                             runCatching {
-                                SecureTlsProbe.uploadFile(
-                                    this@MainActivity, endpoint.first, endpoint.second, endpoint.third,
-                                    share.shareId, share.currentPath, source
-                                ) { sent, total ->
-                                    transferBytes = sent
-                                    transferTotal = total
-                                    val elapsed = (SystemClock.elapsedRealtime() - transferStartedAt).coerceAtLeast(1L)
-                                    transferSpeed = sent * 1000L / elapsed
+                                contentResolver.takePersistableUriPermission(
+                                    uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                )
+                            }
+                            val name = contentResolver.query(
+                                uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
+                                null, null, null
+                            )?.use { cursor ->
+                                if (cursor.moveToFirst()) cursor.getString(0) else null
+                            }?.takeIf { it.isNotBlank() }
+                                ?: throw IllegalArgumentException("Could not read a selected file name.")
+                            SecureTlsProbe.UploadSource(
+                                uri,
+                                if (share.currentPath.isBlank()) name else "${share.currentPath}/$name"
+                            )
+                        }
+                    }
+                    sources.onSuccess { uploadSources ->
+                        scope.launch {
+                            busy = true
+                            transferBytes = 0L
+                            transferTotal = 0L
+                            transferSpeed = 0L
+                            transferStatus = "Preparing ${uploadSources.size} file(s)…"
+                            val transferStartedAt = SystemClock.elapsedRealtime()
+                            val result = withContext(Dispatchers.IO) {
+                                runCatching {
+                                    SecureTlsProbe.uploadFiles(
+                                        this@MainActivity, endpoint.first, endpoint.second, endpoint.third,
+                                        share.shareId, uploadSources
+                                    ) { index, fileSent, fileTotal, totalSent, totalBytes ->
+                                        transferBytes = totalSent
+                                        transferTotal = totalBytes
+                                        val elapsed = (SystemClock.elapsedRealtime() - transferStartedAt).coerceAtLeast(1L)
+                                        transferSpeed = totalSent * 1000L / elapsed
+                                        transferStatus = "Uploading ${index + 1}/${uploadSources.size} · ${fileSent} / ${fileTotal} bytes"
+                                    }
                                 }
                             }
+                            result.onSuccess { messages ->
+                                transferStatus = "Uploaded ${messages.size} file(s) · SHA-256 verified"
+                                browseShare(share, share.currentPath)
+                            }.onFailure {
+                                transferStatus = "Upload failed: " + (it.localizedMessage ?: "Transfer error")
+                            }
+                            busy = false
                         }
-                        result.onSuccess {
-                            transferStatus = it
-                            browseShare(share, share.currentPath)
-                        }.onFailure {
-                            transferStatus = "Upload failed: " + (it.localizedMessage ?: "Transfer error")
-                        }
-                        busy = false
+                    }.onFailure {
+                        transferStatus = "Could not prepare upload: " + (it.localizedMessage ?: "Invalid file")
                     }
                 }
             }
 
-            LaunchedEffect(Unit) {
+                        LaunchedEffect(Unit) {
                 busy = true
                 status = "Checking for a previously paired Windows device…"
                 val result = withContext(Dispatchers.IO) { discoverAndHandshake(autoReconnectOnly = true) }
