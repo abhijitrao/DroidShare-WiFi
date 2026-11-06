@@ -1,7 +1,7 @@
 # DroidShare-WiFi Local Protocol (v1 draft)
 
 ## Status
-The current implementation supports UDP discovery, certificate-pinned TLS, first-time pairing, authenticated trusted-session re-establishment, Windows shared-folder listing, nested directory browsing, and single-file Windows-to-Android download. Android supports clickable breadcrumbs, back navigation, Android's Storage Access Framework destination picker, bounded transfer chunks, live progress/speed, and SHA-256 verification. Android-to-Windows upload, multi-file queue, pause/resume, cancellation UI, and Android trust management are not implemented.
+The current implementation supports UDP discovery, certificate-pinned TLS, first-time pairing, authenticated trusted-session re-establishment, Windows shared-folder listing, nested directory browsing, single-file Windows-to-Android download, and authenticated Android-initiated device revocation. Android supports clickable breadcrumbs, back navigation, Android's Storage Access Framework destination picker, bounded transfer chunks, live progress/speed, SHA-256 verification, and a confirmed Disconnect & Forget action that revokes the Android identity on Windows before removing the local Windows pin. Android-to-Windows upload, multi-file queue, pause/resume, cancellation UI, and Android management of multiple Windows trust records are not implemented.
 
 ## Existing diagnostic transport
 - Discovery: IPv4 UDP broadcast on port 45820.
@@ -20,7 +20,7 @@ Windows replies by unicast with JSON containing type DROIDSHARE_DEVICE, protocol
 ### Diagnostic handshake
 Android sends HELLO and Windows returns WELCOME. Android then sends PING and Windows returns PONG. This exchange is plaintext and unauthenticated. The measured round-trip time is a connectivity diagnostic, not a throughput benchmark. The server applies a five-second idle timeout.
 
-## TLS transport and pairing (implemented; file access not active)
+## TLS transport, pairing, and trusted sessions (implemented)
 
 - Windows listens on TCP port 45822 using its persisted self-signed server certificate.
 - The pairing QR advertises this TLS endpoint and the SHA-256 fingerprint of the DER certificate.
@@ -100,6 +100,7 @@ The Android implementation uses an Android Keystore P-256 signing key. Windows s
 - `SESSION_READY` returns only shares with Read permission. It includes opaque share IDs, display names, and permission flags; absolute Windows paths are never sent.
 - Android requests a directory listing with `LIST_DIRECTORY` (`shareId`, relative `path`). Windows re-checks trust and Read permission, resolves the path beneath the configured share root, skips reparse points, and returns up to 500 entry names/types/sizes/timestamps, with the serialized response capped at 12 KiB in `DIRECTORY_LIST`. Android validates the relative path, supports nested folder navigation, and displays clickable root/ancestor breadcrumbs plus back navigation. Each navigation currently establishes a fresh authenticated TLS session.
 - Trust is checked again before each listing and download request so a revoked device cannot start another operation on an existing session. Authenticated connections have a 30-minute server-side upper lifetime.
+- An authenticated Android client can send `REVOKE_SELF` after completing the normal fresh challenge/proof session handshake. Windows marks that exact Android device identity revoked and returns `SELF_REVOKED`; Android removes its saved Windows certificate pin only after validating this acknowledgement. This prevents automatic reconnect and requires QR-based pairing plus explicit Windows approval to pair again.
 - `DOWNLOAD_FILE` accepts an opaque share ID and relative file path. Windows rechecks active trust and the share's Read permission, resolves the path beneath the selected root, rejects directories and reparse points, then emits a JSON `FILE_START` header with `transferMode=RAW`, `chunkSize=262144`, file name, and expected size. Exactly that many raw binary bytes follow directly on the TLS stream, read/written with a bounded 256 KiB buffer. A JSON `FILE_END` trailer then provides the byte count and SHA-256 of the transmitted bytes. Android streams the fixed-length payload directly to a user-selected Storage Access Framework destination and verifies the final byte count and SHA-256 before reporting success. A failed transfer attempts to remove the partial destination. This avoids per-chunk JSON serialization and Base64 expansion.
 - The current implementation downloads one file at a time. It does not yet support upload, multi-file queues, pause/resume, or a dedicated cancel control. Closing the TLS connection interrupts the transfer.
 - The Windows path guard currently combines canonical path containment and reparse-point checks. Before production use, filesystem access should be hardened with handle-based/reparse-safe operations to mitigate TOCTOU races.
