@@ -97,8 +97,7 @@ public sealed class TlsHostService : IAsyncDisposable
                 }));
             }
             catch (Exception ex) when (ex is IOException or JsonException or SocketException or
-                                           OperationCanceledException or AuthenticationException or
-                                           InvalidDataException)
+                                           OperationCanceledException or AuthenticationException)
             {
                 // Invalid TLS clients and incomplete diagnostic probes are isolated to this connection.
             }
