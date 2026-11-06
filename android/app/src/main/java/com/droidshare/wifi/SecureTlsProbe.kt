@@ -380,45 +380,70 @@ object SecureTlsProbe {
         }
     }
 
+    data class UploadSource(val uri: Uri, val relativePath: String)
+
     fun uploadFile(
         context: Context, host: String, port: Int, windowsDeviceId: String,
         shareId: String, targetFolder: String, source: Uri,
         onProgress: (Long, Long) -> Unit
     ): String {
-        require(windowsDeviceId.matches(Regex("^[a-f0-9]{32}$"))) { "Invalid Windows device identity." }
+        val name = queryDisplayName(context, source)
+        val path = if (targetFolder.isBlank()) "$targetFolder/$name" else "$targetFolder/$name"
+        return uploadFiles(context, host, port, windowsDeviceId, shareId,
+            listOf(UploadSource(source, path))) { _, current, total, _, _ ->
+            onProgress(current, total)
+        }.single()
+    }
+
+    /** Uploads an ordered batch over one pinned and authenticated TLS session. */
+    fun uploadFiles(
+        context: Context,
+        host: String,
+        port: Int,
+        windowsDeviceId: String,
+        shareId: String,
+        sources: List<UploadSource>,
+        onProgress: (Int, Long, Long, Long, Long) -> Unit
+    ): List<String> {
         require(shareId.matches(Regex("^[a-fA-F0-9-]{36}$"))) { "Invalid shared folder ID." }
-        require(targetFolder.length <= 2048 && !targetFolder.startsWith("/") &&
-            targetFolder.split('/').filter { it.isNotEmpty() }.none { it == "." || it == ".." || it.contains('\\') }) {
-            "Invalid destination folder."
-        }
-        val fileName = context.contentResolver.query(source, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-            ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
-            ?: throw IllegalArgumentException("Android could not read the selected file name.")
-        require(fileName.isNotBlank() && fileName.length <= 240 && fileName !in setOf(".", "..") &&
-            fileName.none { it == '/' || it == '\\' || it == '\u0000' }) { "Selected file name is invalid." }
-        val size = context.contentResolver.openAssetFileDescriptor(source, "r")?.use { it.length } ?: -1L
-        require(size >= 0 && size <= 4L * 1024 * 1024 * 1024) {
-            "This file provider does not report a supported file size."
-        }
+        require(sources.isNotEmpty()) { "Select at least one file to upload." }
+        require(sources.size <= 1000) { "A single upload batch is limited to 1,000 files." }
 
-        val digest = MessageDigest.getInstance("SHA-256")
-        context.contentResolver.openInputStream(source)?.use { input ->
-            val buffer = ByteArray(256 * 1024)
-            var counted = 0L
-            while (true) {
-                val count = input.read(buffer)
-                if (count < 0) break
-                counted += count
-                require(counted <= size) { "Selected file changed while preparing upload." }
-                digest.update(buffer, 0, count)
+        data class PreparedUpload(val uri: Uri, val path: String, val size: Long, val hash: String)
+        val prepared = sources.map { source ->
+            require(source.relativePath.isNotBlank() && source.relativePath.length <= 2048 &&
+                !source.relativePath.startsWith("/") &&
+                source.relativePath.split('/').none { it.isBlank() || it == "." || it == ".." || it.contains('\\') }) {
+                "Invalid upload path."
             }
-            require(counted == size) { "Selected file size changed while preparing upload." }
-        } ?: throw IllegalStateException("Android could not open the selected file.")
-        val expectedHash = digest.digest().joinToString("") { byte -> "%02x".format(byte) }
-        val relativePath = if (targetFolder.isBlank()) fileName else targetFolder + "/" + fileName
-        require(relativePath.length <= 2048) { "Upload path is too long." }
+            require(source.relativePath.split('/').all { segment ->
+                segment.length <= 240 && segment.none { ch -> ch == '\u0000' || ch == '\\' }
+            }) { "Upload path contains an invalid file or folder name." }
 
-        withTrustedSession(context, host, port, windowsDeviceId) { tls, ready ->
+            val size = context.contentResolver.openAssetFileDescriptor(source.uri, "r")?.use { it.length } ?: -1L
+            require(size >= 0 && size <= 4L * 1024 * 1024 * 1024) {
+                "A selected file provider does not report a supported file size."
+            }
+            val digest = MessageDigest.getInstance("SHA-256")
+            var counted = 0L
+            context.contentResolver.openInputStream(source.uri)?.use { input ->
+                val buffer = ByteArray(256 * 1024)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    counted += count
+                    require(counted <= size) { "A selected file changed while preparing the upload." }
+                    digest.update(buffer, 0, count)
+                }
+            } ?: throw IllegalStateException("Android could not open a selected file.")
+            require(counted == size) { "A selected file size changed while preparing the upload." }
+            PreparedUpload(source.uri, source.relativePath, size,
+                digest.digest().joinToString("") { byte -> "%02x".format(byte) })
+        }
+        val totalBytes = prepared.sumOf { it.size }
+        var completedBytes = 0L
+
+        return withTrustedSession(context, host, port, windowsDeviceId) { tls, ready ->
             val shares = ready.optJSONArray("shares") ?: org.json.JSONArray()
             val selectedShare = (0 until shares.length()).map { shares.getJSONObject(it) }
                 .firstOrNull { it.optString("shareId") == shareId }
@@ -426,48 +451,71 @@ object SecureTlsProbe {
             check(selectedShare.optBoolean("canWrite")) {
                 "Windows has not enabled Write permission for this shared folder."
             }
-            writeLine(tls, JSONObject().put("type", "UPLOAD_FILE").put("protocolVersion", 1)
-                .put("shareId", shareId).put("path", relativePath).put("size", size).put("sha256", expectedHash))
-            val uploadReady = JSONObject(readLine(tls.inputStream))
-            if (uploadReady.optString("type") == "SESSION_ERROR")
-                throw IllegalStateException(uploadReady.optString("message", "Windows rejected the upload."))
-            check(uploadReady.optString("type") == "UPLOAD_READY" && uploadReady.optInt("protocolVersion") == 1 &&
-                uploadReady.optString("transferMode") == "RAW" && uploadReady.optLong("size", -1) == size) {
-                "Windows returned an invalid upload response."
-            }
-            val chunkSize = uploadReady.optInt("chunkSize", -1)
-            require(chunkSize in (16 * 1024)..(1024 * 1024)) { "Windows returned an invalid upload buffer size." }
-            val uploadDigest = MessageDigest.getInstance("SHA-256")
-            var sent = 0L
-            context.contentResolver.openInputStream(source)?.use { input ->
-                val buffer = ByteArray(chunkSize)
-                val output = tls.outputStream
-                while (sent < size) {
-                    val count = input.read(buffer, 0, minOf(buffer.size.toLong(), size - sent).toInt())
-                    check(count > 0) { "Selected file ended before upload completed." }
-                    output.write(buffer, 0, count)
-                    uploadDigest.update(buffer, 0, count)
-                    sent += count
-                    onProgress(sent, size)
+
+            prepared.mapIndexed { index, file ->
+                writeLine(tls, JSONObject().put("type", "UPLOAD_FILE").put("protocolVersion", 1)
+                    .put("shareId", shareId).put("path", file.path)
+                    .put("size", file.size).put("sha256", file.hash))
+                val uploadReady = JSONObject(readLine(tls.inputStream))
+                if (uploadReady.optString("type") == "SESSION_ERROR")
+                    throw IllegalStateException(uploadReady.optString("message", "Windows rejected ${file.path}."))
+                check(uploadReady.optString("type") == "UPLOAD_READY" &&
+                    uploadReady.optInt("protocolVersion") == 1 &&
+                    uploadReady.optString("transferMode") == "RAW" &&
+                    uploadReady.optLong("size", -1) == file.size) {
+                    "Windows returned an invalid upload response for ${file.path}."
                 }
-                output.flush()
-            } ?: throw IllegalStateException("Android could not reopen the selected file.")
-            val sentHash = uploadDigest.digest().joinToString("") { byte -> "%02x".format(byte) }
-            check(sentHash.equals(expectedHash, ignoreCase = true)) {
-                "Selected file changed during upload; Windows will not finalize it."
+                val chunkSize = uploadReady.optInt("chunkSize", -1)
+                require(chunkSize in (16 * 1024)..(1024 * 1024)) {
+                    "Windows returned an invalid upload buffer size."
+                }
+                val uploadDigest = MessageDigest.getInstance("SHA-256")
+                var sent = 0L
+                context.contentResolver.openInputStream(file.uri)?.use { input ->
+                    val buffer = ByteArray(chunkSize)
+                    val output = tls.outputStream
+                    while (sent < file.size) {
+                        val count = input.read(buffer, 0, minOf(buffer.size.toLong(), file.size - sent).toInt())
+                        check(count > 0) { "Selected file ended before upload completed: ${file.path}" }
+                        output.write(buffer, 0, count)
+                        uploadDigest.update(buffer, 0, count)
+                        sent += count
+                        onProgress(index, sent, file.size, completedBytes + sent, totalBytes)
+                    }
+                    output.flush()
+                } ?: throw IllegalStateException("Android could not reopen ${file.path}.")
+                val sentHash = uploadDigest.digest().joinToString("") { byte -> "%02x".format(byte) }
+                check(sentHash.equals(file.hash, ignoreCase = true)) {
+                    "Selected file changed during upload; Windows will not finalize it."
+                }
+                writeLine(tls, JSONObject().put("type", "UPLOAD_END").put("protocolVersion", 1)
+                    .put("bytesSent", sent).put("sha256", sentHash))
+                val completed = JSONObject(readLine(tls.inputStream))
+                if (completed.optString("type") == "SESSION_ERROR")
+                    throw IllegalStateException(completed.optString("message", "Windows could not finalize ${file.path}."))
+                check(completed.optString("type") == "UPLOAD_COMPLETE" &&
+                    completed.optInt("protocolVersion") == 1 &&
+                    completed.optLong("bytesReceived", -1) == file.size &&
+                    completed.optString("sha256").equals(sentHash, ignoreCase = true)) {
+                    "Windows did not confirm the verified upload for ${file.path}."
+                }
+                completedBytes += sent
+                onProgress(index, sent, file.size, completedBytes, totalBytes)
+                "Uploaded ${file.path} · " + formatBytes(sent) + " · SHA-256 verified"
             }
-            writeLine(tls, JSONObject().put("type", "UPLOAD_END").put("protocolVersion", 1)
-                .put("bytesSent", sent).put("sha256", sentHash))
-            val completed = JSONObject(readLine(tls.inputStream))
-            if (completed.optString("type") == "SESSION_ERROR")
-                throw IllegalStateException(completed.optString("message", "Windows could not finalize the upload."))
-            check(completed.optString("type") == "UPLOAD_COMPLETE" && completed.optInt("protocolVersion") == 1 &&
-                completed.optLong("bytesReceived", -1) == size &&
-                completed.optString("sha256").equals(sentHash, ignoreCase = true)) {
-                "Windows did not confirm the verified upload."
-            }
-            return "Upload complete · " + formatBytes(sent) + " · SHA-256 verified"
         }
+    }
+
+    private fun queryDisplayName(context: Context, source: Uri): String {
+        val name = context.contentResolver.query(
+            source, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null
+        )?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+            ?: throw IllegalArgumentException("Android could not read the selected file name.")
+        require(name.isNotBlank() && name.length <= 240 && name !in setOf(".", "..") &&
+            name.none { it == '/' || it == '\\' || it == '\u0000' }) {
+            "Selected file name is invalid."
+        }
+        return name
     }
 
     fun downloadFile(
