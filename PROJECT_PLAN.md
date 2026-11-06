@@ -96,8 +96,9 @@ See docs/ARCHITECTURE.md, docs/SECURITY.md, and shared/protocol/PROTOCOL.md.
 - [x] Add bounded root-directory metadata listing over authenticated TLS; skip reparse points and cap responses.
 - [x] Android displays trusted Windows shared folders, permissions, and root entry metadata.
 - [x] Add nested folder navigation with clickable breadcrumbs and back navigation on Android.
-- [ ] Single/multiple file streaming both directions; queue, progress, speed, cancellation.
-**Exit:** repeatable transfers with bounded memory. Remote folder metadata browsing is implemented for trusted devices. No file contents are transferred; upload/download/write/delete/stream APIs remain disabled.
+- [x] Single-file Windows-to-Android download over authenticated TLS with bounded 8 KiB chunks, Android destination picker, live progress/speed, and SHA-256 verification.
+- [ ] Android-to-Windows upload, multi-file queue, cancellation, pause/resume, and transfer history.
+**Exit:** repeatable transfers with bounded memory. Trusted Android devices can browse Windows shares and download one file at a time with SHA-256 verification. Android upload, multi-file queue, cancellation/pause/resume, write/delete, and media streaming remain future work.
 
 ### Phase 3 — Folder transfer
 - Recursive manifest, directory creation, conflict policy, path validation.
@@ -137,7 +138,7 @@ See docs/ARCHITECTURE.md, docs/SECURITY.md, and shared/protocol/PROTOCOL.md.
 - Disconnect and revoke controls.
 
 ## 7. Current status
-Phase 1 implements UDP discovery, TLS QR pairing, Android Keystore P-256 identity proof, Windows trusted-device management/revocation, and authenticated reconnect sessions. Discovery advertises the Windows device ID and TLS endpoint as untrusted hints; Android verifies the saved certificate pin and proves its identity with a fresh challenge for each session. Phase 2 now includes Windows shared-folder selection and per-share permissions, plus an authenticated TLS share-list and root-directory metadata browser on Android. Windows re-checks revocation and Read permission before each listing, never sends absolute paths, skips reparse points, and bounds listing responses. The Android UI presents shared folders and supports authenticated nested-folder browsing with clickable breadcrumbs and back navigation. Each navigation request re-establishes a certificate-pinned TLS session and proves the Android Keystore identity. Physical-device interoperability testing is still pending. File contents are not transferred yet; upload, download, write, delete, and streaming remain future work.
+Phase 1 implements UDP discovery, TLS QR pairing, Android Keystore P-256 identity proof, Windows trusted-device management/revocation, and authenticated reconnect sessions. Discovery advertises the Windows device ID and TLS endpoint as untrusted hints; Android verifies the saved certificate pin and proves its identity with a fresh challenge for each session. Phase 2 now includes Windows shared-folder selection and per-share permissions, plus an authenticated TLS share-list and root-directory metadata browser on Android. Windows re-checks revocation and Read permission before each listing, never sends absolute paths, skips reparse points, and bounds listing responses. The Android UI presents shared folders and supports authenticated nested-folder browsing with clickable breadcrumbs and back navigation. Each navigation request re-establishes a certificate-pinned TLS session and proves the Android Keystore identity. Physical-device testing of file download is still pending. A single file can now be downloaded from Windows to Android through authenticated TLS, saved through Android's document picker, and verified using SHA-256. Android upload, multi-file queue, cancellation/pause/resume, write, delete, and streaming remain future work.
 
 ## 8. Decision log
 - Prefer 5 GHz for primary performance tests; do not require it.
