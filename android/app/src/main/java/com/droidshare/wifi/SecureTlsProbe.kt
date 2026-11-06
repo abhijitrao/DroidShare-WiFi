@@ -399,7 +399,7 @@ object SecureTlsProbe {
                     actualHash.equals(expectedHash, ignoreCase = true)) {
                     "SHA-256 verification failed. The downloaded file may be incomplete or corrupted."
                 }
-                return "Download complete · \${formatBytes(received)} · SHA-256 verified"
+                return "Download complete · ${formatBytes(received)} · SHA-256 verified"
             }
         } catch (error: Exception) {
             runCatching { context.contentResolver.delete(destination, null, null) }
