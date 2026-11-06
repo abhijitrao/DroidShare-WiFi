@@ -26,12 +26,25 @@ public sealed class PendingPairingRegistry
         }
     }
 
-    public void Complete(string nonce, bool consume)
+    public bool TryConsume(string nonce)
+    {
+        lock (_gate)
+        {
+            if (_nonce is null || !_reserved || DateTimeOffset.UtcNow >= _expiresAt ||
+                !CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(_nonce), Encoding.UTF8.GetBytes(nonce)))
+                return false;
+            _nonce = null;
+            _reserved = false;
+            return true;
+        }
+    }
+
+    public void Release(string nonce)
     {
         lock (_gate)
         {
             if (_nonce is null || !CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(_nonce), Encoding.UTF8.GetBytes(nonce))) return;
-            if (consume || DateTimeOffset.UtcNow >= _expiresAt) { _nonce = null; _reserved = false; }
+            if (DateTimeOffset.UtcNow >= _expiresAt) { _nonce = null; _reserved = false; }
             else _reserved = false;
         }
     }
