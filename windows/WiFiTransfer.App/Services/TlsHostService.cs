@@ -135,9 +135,13 @@ public sealed class TlsHostService : IAsyncDisposable
                 if (!ecdsa.VerifyData(challenge, signature, HashAlgorithmName.SHA256))
                 { await SendErrorAsync(writer, "Android device identity proof failed."); return; }
 
-                _trustedDevices.AddOrReplace(deviceId, deviceName, publicKeyBase64);
-                _pendingPairing.Complete(nonce, consume: true);
+                if (!_pendingPairing.TryConsume(nonce))
+                {
+                    await SendErrorAsync(writer, "QR nonce expired or was replaced before pairing completed. Refresh the QR and try again.");
+                    return;
+                }
                 consumed = true;
+                _trustedDevices.AddOrReplace(deviceId, deviceName, publicKeyBase64);
                 var certFingerprint = WindowsIdentityService.GetSha256Fingerprint(_certificate);
                 await writer.WriteLineAsync(JsonSerializer.Serialize(new
                 {
@@ -157,7 +161,7 @@ public sealed class TlsHostService : IAsyncDisposable
             finally
             {
                 if (reservedNonce is not null && !consumed)
-                    _pendingPairing.Complete(reservedNonce, consume: false);
+                    _pendingPairing.Release(reservedNonce);
             }
         }
     }
