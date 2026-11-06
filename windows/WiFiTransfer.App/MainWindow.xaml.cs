@@ -80,6 +80,12 @@ public partial class MainWindow : Window
         }).Task;
     }
 
+    private void ManageDevicesButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new TrustedDevicesWindow(_trustedDevices) { Owner = this };
+        dialog.ShowDialog();
+    }
+
     private void RefreshQrButton_Click(object sender, RoutedEventArgs e)
     {
         var address = GetLocalIpv4Addresses().FirstOrDefault();
