@@ -189,12 +189,12 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                     Spacer(Modifier.height(12.dp))
-                                    Text("\${pairing.host}:\${pairing.port}", color = ink,
+                                    Text("${pairing.host}:${pairing.port}", color = ink,
                                         style = MaterialTheme.typography.bodyMedium)
                                     Text("Certificate SHA-256", color = muted, style = MaterialTheme.typography.labelSmall)
                                     Text(pairing.certificateSha256, color = muted, style = MaterialTheme.typography.bodySmall)
                                     Text(
-                                        "QR expires \${DateTimeFormatter.ofPattern("HH:mm:ss")
+                                        "QR expires ${DateTimeFormatter.ofPattern("HH:mm:ss")
                                             .withZone(ZoneId.systemDefault()).format(pairing.expiresAt)}",
                                         color = muted, style = MaterialTheme.typography.labelSmall
                                     )
