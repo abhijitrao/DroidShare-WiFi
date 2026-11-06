@@ -32,7 +32,7 @@ The pairing message sequence, expiry, replay rules, and QR schema are specified 
 
 ## Authenticated sessions and remote folder metadata browsing
 - UDP discovery advertises the stable Windows certificate-derived device ID and TLS port as untrusted connection hints.
-- Android reconnects to a previously paired Windows host using the saved certificate pin and Android Keystore P-256 identity. Windows issues a fresh challenge and verifies proof of possession for each TLS session.
+- Android reconnects to a previously paired Windows host using the saved certificate pin and Android Keystore P-256 identity. Windows issues a fresh challenge and verifies proof of possession for each TLS session. On Android app launch, the app performs one local UDP discovery attempt and automatically reconnects when the discovered Windows device ID has a saved trust pin; it does not initiate pairing or show an approval prompt. If no trusted device is discovered, the user can still start manual discovery or scan a QR.
 - Windows checks the active trusted-device record before and after proof verification and before each directory listing request, so revocation prevents further browsing.
 - `SESSION_READY` exposes only shares with Read permission and never exposes absolute Windows paths.
 - `LIST_DIRECTORY` accepts a validated relative path beneath the selected share and returns a bounded metadata listing (maximum 500 entries); reparse-point entries are skipped. Android navigates nested directories with root/ancestor breadcrumbs and back navigation. Each navigation currently opens a fresh authenticated TLS session.
