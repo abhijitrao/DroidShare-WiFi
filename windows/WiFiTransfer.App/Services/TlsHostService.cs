@@ -244,6 +244,7 @@ public sealed class TlsHostService : IAsyncDisposable
         var certFingerprint = WindowsIdentityService.GetSha256Fingerprint(_certificate);
         var visibleShares = _sharedFolders.GetAll()
             .Where(share => share.CanRead)
+            .Take(50)
             .Select(share => new
             {
                 shareId = share.ShareId,
@@ -262,6 +263,7 @@ public sealed class TlsHostService : IAsyncDisposable
             deviceName = Environment.MachineName,
             shares = visibleShares
         }));
+        SecureClientConnected?.Invoke("Authenticated session from " + deviceId);
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -301,11 +303,13 @@ public sealed class TlsHostService : IAsyncDisposable
                 if (!Directory.Exists(directoryPath))
                     throw new DirectoryNotFoundException("The requested folder does not exist.");
 
+                var entryPaths = Directory.EnumerateFileSystemEntries(directoryPath)
+                    .OrderBy(path => Directory.Exists(path) ? 0 : 1)
+                    .ThenBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
+                    .Take(501)
+                    .ToArray();
                 var entries = new List<object>();
-                foreach (var entryPath in Directory.EnumerateFileSystemEntries(directoryPath)
-                             .OrderBy(path => Directory.Exists(path) ? 0 : 1)
-                             .ThenBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
-                             .Take(501))
+                foreach (var entryPath in entryPaths.Take(500))
                 {
                     var attributes = File.GetAttributes(entryPath);
                     if ((attributes & FileAttributes.ReparsePoint) != 0) continue;
@@ -318,18 +322,34 @@ public sealed class TlsHostService : IAsyncDisposable
                         size = isDirectory ? 0L : ((FileInfo)info).Length,
                         modifiedUtc = info.LastWriteTimeUtc
                     });
-                    if (entries.Count == 500) break;
                 }
 
-                await writer.WriteLineAsync(JsonSerializer.Serialize(new
+                var truncated = entryPaths.Length > 500;
+                var listingJson = JsonSerializer.Serialize(new
                 {
                     type = "DIRECTORY_LIST",
                     protocolVersion = 1,
                     shareId,
                     path = relativePath,
                     entries,
-                    truncated = Directory.EnumerateFileSystemEntries(directoryPath).Skip(500).Any()
-                }));
+                    truncated
+                });
+                // Keep the response comfortably below the 16 KiB line protocol limit.
+                while (Encoding.UTF8.GetByteCount(listingJson) > 12 * 1024 && entries.Count > 0)
+                {
+                    entries.RemoveAt(entries.Count - 1);
+                    truncated = true;
+                    listingJson = JsonSerializer.Serialize(new
+                    {
+                        type = "DIRECTORY_LIST",
+                        protocolVersion = 1,
+                        shareId,
+                        path = relativePath,
+                        entries,
+                        truncated
+                    });
+                }
+                await writer.WriteLineAsync(listingJson);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
             {
