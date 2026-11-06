@@ -3,10 +3,10 @@
 Fast, secure local file sharing between Android and Windows over Wi-Fi.
 
 ## Project structure
-- `android/` — Kotlin / Jetpack Compose application.
-- `windows/` — C# / .NET 10 / WPF application.
-- `shared/protocol/` — shared protocol specifications.
-- `docs/` — architecture, security, and testing documentation.
+- android/ — Kotlin / Jetpack Compose application.
+- windows/ — C# / .NET 10 / WPF application.
+- shared/protocol/ — shared protocol specifications.
+- docs/ — architecture, security, and testing documentation.
 
 ## Product principles
 - Bidirectional file transfer over local Wi-Fi.
@@ -16,7 +16,12 @@ Fast, secure local file sharing between Android and Windows over Wi-Fi.
 - User-selected Windows shared folders only.
 - Planned UPnP AV / DLNA media streaming.
 
-See [AGENTS.md](AGENTS.md) for repository engineering instructions and [PROJECT_PLAN.md](PROJECT_PLAN.md) for the complete roadmap and acceptance criteria.
+See AGENTS.md for repository engineering instructions and PROJECT_PLAN.md for the roadmap and acceptance criteria.
 
-## Status
-Phase 1 connection diagnostics are implemented: Windows UDP discovery/TCP host and Android UDP discovery/TCP client, including HELLO/WELCOME and PING/PONG round-trip measurement. GitHub Actions run 10 passed for both platform builds. QR pairing, TLS authentication, file transfer, resume, DLNA, remote folder access, and physical-device testing are still pending.
+## Current implementation status
+- Windows WPF: UDP discovery responder and TCP diagnostic listener.
+- Android: UDP discovery client, TCP HELLO/WELCOME handshake, and PING/PONG round-trip display.
+- CI: Android and Windows build jobs are configured.
+- Not implemented: QR display/scanning, TLS, authenticated pairing, trust/revocation, file transfer, resume, DLNA, remote folder access, and physical-device interoperability testing.
+
+The current connection diagnostic is plaintext and unauthenticated. It is not suitable for file access or user-file transfer. See docs/SECURITY.md before extending the network protocol.
