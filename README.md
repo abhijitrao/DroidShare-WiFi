@@ -21,10 +21,11 @@ See AGENTS.md for repository engineering instructions and PROJECT_PLAN.md for th
 ## Current implementation status
 - Windows WPF: UDP discovery responder and TCP diagnostic listener.
 - Windows: creates/loads a self-signed TLS certificate in the current user's certificate store and displays its SHA-256 fingerprint.
-- Windows: generates a 120-second QR payload preview with a cryptographically random nonce and local IPv4 endpoint hint.
+- Windows: runs a dedicated TLS diagnostic listener on port 45822 and generates a 120-second QR with a cryptographically random nonce and TLS endpoint hint.
+- Android: scans and validates the QR, then can explicitly connect over TLS and verify the exact certificate SHA-256 pin.
 - Android: UDP discovery client, TCP HELLO/WELCOME handshake, and PING/PONG round-trip display.
 - CI: Android and Windows build jobs are configured.
 
-**Still not implemented:** Android QR scanning, TLS listener and certificate pin validation, server-side nonce validation/consumption, authenticated pairing approval/proof, trust storage/revocation, file transfer, resume, DLNA, remote folder access, and physical-device interoperability testing.
+**Still not implemented:** server-side nonce validation/consumption, authenticated pairing approval/proof, trust storage/revocation, file transfer, resume, DLNA, remote folder access, and physical-device interoperability testing.
 
-The Windows QR is explicitly labelled as a preview and must not be scanned as a working pairing flow yet. The current connection diagnostic is plaintext and unauthenticated; it is not suitable for file access or user-file transfer. See docs/SECURITY.md.
+The TLS probe confirms that the endpoint presents the certificate encoded in the scanned QR. It does not pair devices or authorize file access. The separate TCP diagnostic on port 45821 remains plaintext and unauthenticated; neither diagnostic endpoint is suitable for file access or user-file transfer. See docs/SECURITY.md.
