@@ -17,7 +17,9 @@ public partial class MainWindow : Window
     private TlsHostService? _tls;
     private readonly UdpDiscoveryService _discovery = new();
     private readonly WindowsIdentityService _identityService = new();
-    private readonly PairingQrService _pairingQrService = new();
+    private readonly PendingPairingRegistry _pendingPairing = new();
+    private readonly TrustedDeviceStore _trustedDevices = new();
+    private PairingQrService _pairingQrService = null!;
     private readonly DispatcherTimer _qrExpiryTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private X509Certificate2? _certificate;
     private PairingQrData? _pairingQrData;
@@ -25,6 +27,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        _pairingQrService = new PairingQrService(_pendingPairing);
         Loaded += OnLoaded;
         Closed += OnClosed;
         _qrExpiryTimer.Tick += OnQrExpiryTimerTick;
@@ -35,7 +38,7 @@ public partial class MainWindow : Window
         try
         {
             _certificate = _identityService.GetOrCreateCertificate();
-            _tls = new TlsHostService(_certificate);
+            _tls = new TlsHostService(_certificate, _pendingPairing, _trustedDevices, ApprovePairingAsync);
             await _tls.StartAsync();
             _tls.SecureClientConnected += remote =>
                 Dispatcher.Invoke(() => LastEventText.Text = $"Certificate-pinned TLS diagnostic from {remote}");
@@ -62,6 +65,19 @@ public partial class MainWindow : Window
             StatusText.Text = $"Could not start services: {ex.Message}";
             PairingStatusText.Text = "Could not prepare the Windows pairing identity.";
         }
+    }
+
+    private Task<bool> ApprovePairingAsync(PairingApprovalRequest request)
+    {
+        return Dispatcher.InvokeAsync(() =>
+        {
+            var message = "Allow this Android device to pair?\n\nName: " + request.DeviceName +
+                "\nDevice ID: " + request.DeviceId +
+                "\nPublic key SHA-256: " + request.PublicKeyFingerprint +
+                "\n\nOnly approve if you initiated this pairing.";
+            return MessageBox.Show(this, message, "Approve Android device",
+                MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) == MessageBoxResult.Yes;
+        }).Task;
     }
 
     private void RefreshQrButton_Click(object sender, RoutedEventArgs e)
@@ -108,6 +124,7 @@ public partial class MainWindow : Window
         {
             _qrExpiryTimer.Stop();
             PairingQrImage.Source = null;
+            _pendingPairing.Invalidate();
             PairingStatusText.Text = "QR preview expired. Refresh it when the secure pairing flow is ready.";
             ExpiryText.Text = "QR expires in: expired";
         }
@@ -126,6 +143,7 @@ public partial class MainWindow : Window
     {
         _qrExpiryTimer.Stop();
         _pairingQrData = null;
+        _pendingPairing.Invalidate();
         if (_tls is not null) await _tls.DisposeAsync();
         await _discovery.DisposeAsync();
         await _tcp.DisposeAsync();
