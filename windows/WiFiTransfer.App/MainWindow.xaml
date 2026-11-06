@@ -54,11 +54,11 @@
             <Border Grid.Row="5" Background="#1F2937" CornerRadius="10" Padding="16" Margin="0,16,0,0">
                 <StackPanel>
                     <TextBlock Text="Phase 1 diagnostic mode" FontWeight="SemiBold"/>
-                    <TextBlock Text="QR generation and the Windows certificate identity are local previews only. Android scanning, TLS listener, nonce validation, and authenticated pairing are not enabled yet. File access and transfer remain disabled."
+                    <TextBlock Text="QR scanning can now establish a certificate-pinned TLS diagnostic connection. Device pairing, nonce consumption, trust storage, file access, and transfer are not enabled yet."
                                TextWrapping="Wrap" Foreground="#D1D5DB" Margin="0,8,0,0"/>
                     <TextBlock x:Name="LastEventText" Text="No Android device connected yet."
                                Foreground="#9CA3AF" Margin="0,14,0,0"/>
-                    <TextBlock Text="UDP discovery :45820   •   TCP diagnostic :45821"
+                    <TextBlock Text="UDP discovery :45820   •   TCP diagnostic :45821   •   TLS diagnostic :45822"
                                Foreground="#6B7280" Margin="0,14,0,0"/>
                 </StackPanel>
             </Border>
