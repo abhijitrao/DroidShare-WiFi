@@ -411,7 +411,7 @@ object SecureTlsProbe {
         value >= 1024L * 1024 * 1024 -> "%.2f GB".format(value / (1024.0 * 1024 * 1024))
         value >= 1024L * 1024 -> "%.1f MB".format(value / (1024.0 * 1024))
         value >= 1024L -> "%.1f KB".format(value / 1024.0)
-        else -> "\$value B"
+        else -> "$value B"
     }
 
     private fun pinnedTrustManager(expectedFingerprint: String): X509TrustManager =
