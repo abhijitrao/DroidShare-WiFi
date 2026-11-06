@@ -167,6 +167,8 @@ class MainActivity : ComponentActivity() {
                         Spacer(Modifier.height(8.dp))
                         Text(scanMessage.value, style = MaterialTheme.typography.bodyMedium, color = ink)
                         scannedQr.value?.let { pairing ->
+                            val expiresLabel = DateTimeFormatter.ofPattern("HH:mm:ss")
+                                .withZone(ZoneId.systemDefault()).format(pairing.expiresAt)
                             Spacer(Modifier.height(10.dp))
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
@@ -193,11 +195,8 @@ class MainActivity : ComponentActivity() {
                                         style = MaterialTheme.typography.bodyMedium)
                                     Text("Certificate SHA-256", color = muted, style = MaterialTheme.typography.labelSmall)
                                     Text(pairing.certificateSha256, color = muted, style = MaterialTheme.typography.bodySmall)
-                                    Text(
-                                        "QR expires ${DateTimeFormatter.ofPattern("HH:mm:ss")
-                                            .withZone(ZoneId.systemDefault()).format(pairing.expiresAt)}",
-                                        color = muted, style = MaterialTheme.typography.labelSmall
-                                    )
+                                    Text("QR expires $expiresLabel", color = muted,
+                                        style = MaterialTheme.typography.labelSmall)
                                     Spacer(Modifier.height(14.dp))
                                     Button(
                                         modifier = Modifier.fillMaxWidth().height(52.dp),
