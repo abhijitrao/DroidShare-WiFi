@@ -19,6 +19,7 @@ public partial class MainWindow : Window
     private readonly WindowsIdentityService _identityService = new();
     private readonly PendingPairingRegistry _pendingPairing = new();
     private readonly TrustedDeviceStore _trustedDevices = new();
+    private readonly SharedFolderStore _sharedFolders = new();
     private PairingQrService _pairingQrService = null!;
     private readonly DispatcherTimer _qrExpiryTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private X509Certificate2? _certificate;
@@ -83,6 +84,12 @@ public partial class MainWindow : Window
     private void ManageDevicesButton_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new TrustedDevicesWindow(_trustedDevices) { Owner = this };
+        dialog.ShowDialog();
+    }
+
+    private void ManageSharedFoldersButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new SharedFoldersWindow(_sharedFolders) { Owner = this };
         dialog.ShowDialog();
     }
 
