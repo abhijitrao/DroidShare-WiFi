@@ -86,7 +86,7 @@ object SecureTlsProbe {
                 .put("protocolVersion", 1)
                 .put("nonce", pairing.nonce)
                 .put("androidDeviceId", androidDeviceId)
-                 .put("deviceName", androidName)
+                .put("deviceName", androidName)
                 .put("publicKeyAlgorithm", "ECDSA_P256")
                 .put("publicKey", android.util.Base64.encodeToString(publicKey.encoded, android.util.Base64.NO_WRAP))
             writeLine(tls, hello)
