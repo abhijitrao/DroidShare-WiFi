@@ -27,6 +27,6 @@ See AGENTS.md for repository engineering instructions and PROJECT_PLAN.md for th
 - Android: UDP discovery client, TCP HELLO/WELCOME handshake, and PING/PONG round-trip display.
 - CI: Android and Windows build jobs are configured.
 
-**Still not implemented:** trusted-device revocation UI, file transfer, resume, DLNA, remote folder access, and physical-device interoperability testing.
+**Still not implemented:** trusted-device management on Android, file transfer, resume, DLNA, remote folder access, and physical-device interoperability testing.
 
-Secure pairing now verifies the Windows certificate pin, one-time in-memory QR nonce, Windows user approval, and Android private-key proof. Windows stores Android public-key identities under LocalAppData; Android stores the Windows certificate pin after the final approval response. Pairing does not yet authorize file access. The separate TCP diagnostic on port 45821 remains plaintext and unauthenticated; neither diagnostic endpoint is suitable for file access or user-file transfer. See docs/SECURITY.md.
+Secure pairing now verifies the Windows certificate pin, one-time in-memory QR nonce, Windows user approval, and Android private-key proof. Windows stores Android public-key identities under LocalAppData; Android stores the Windows certificate pin after the final approval response. Windows now includes a paired-device manager with explicit revocation. Pairing does not yet authorize file access. The separate TCP diagnostic on port 45821 remains plaintext and unauthenticated; neither diagnostic endpoint is suitable for file access or user-file transfer. See docs/SECURITY.md.
