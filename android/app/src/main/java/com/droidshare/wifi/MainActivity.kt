@@ -64,6 +64,7 @@ class MainActivity : ComponentActivity() {
             val green = androidx.compose.ui.graphics.Color(0xFF16865B)
             var status by remember { mutableStateOf("Ready to discover a Windows device") }
             var busy by remember { mutableStateOf(false) }
+            var showDisconnectDialog by remember { mutableStateOf(false) }
             var tlsStatus by remember { mutableStateOf("Pairing has not been attempted.") }
             var connectedEndpoint by remember { mutableStateOf<Triple<String, Int, String>?>(null) }
             var pendingDownload by remember { mutableStateOf<Pair<RemoteShare, RemoteDirectoryEntry>?>(null) }
@@ -236,6 +237,20 @@ class MainActivity : ComponentActivity() {
                                         scannerLauncher.launch(options)
                                     }
                                 ) { Text("Scan Windows pairing QR") }
+                                if (connectedEndpoint != null) {
+                                    Spacer(Modifier.height(10.dp))
+                                    OutlinedButton(
+                                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                                        enabled = !busy,
+                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
+                                        colors = ButtonDefaults.outlinedButtonColors(
+                                            contentColor = androidx.compose.ui.graphics.Color(0xFFB45353)
+                                        ),
+                                        onClick = { showDisconnectDialog = true }
+                                    ) {
+                                        Text("Disconnect & forget device")
+                                    }
+                                }
                             }
                         }
 
@@ -448,6 +463,59 @@ class MainActivity : ComponentActivity() {
                         Spacer(Modifier.height(18.dp))
                         Text("Both devices must allow local device communication. QR pairing does not bypass Wi-Fi client isolation or firewall rules.",
                             style = MaterialTheme.typography.bodySmall, color = muted)
+                    }
+
+                    if (showDisconnectDialog) {
+                        AlertDialog(
+                            onDismissRequest = { if (!busy) showDisconnectDialog = false },
+                            title = { Text("Disconnect and forget Windows device?") },
+                            text = {
+                                Text("DroidShare will ask Windows to revoke this Android device, then remove the saved trust on this phone. Automatic reconnect will stop. To connect again, scan the Windows QR and approve pairing on Windows.")
+                            },
+                            confirmButton = {
+                                TextButton(
+                                    enabled = !busy,
+                                    onClick = {
+                                        val endpoint = connectedEndpoint
+                                        if (endpoint != null) {
+                                            scope.launch {
+                                                busy = true
+                                                status = "Revoking this device on Windows…"
+                                                val result = withContext(Dispatchers.IO) {
+                                                    runCatching {
+                                                        SecureTlsProbe.disconnectAndForget(
+                                                            this@MainActivity,
+                                                            endpoint.first,
+                                                            endpoint.second,
+                                                            endpoint.third
+                                                        )
+                                                    }
+                                                }
+                                                result.onSuccess {
+                                                    connectedEndpoint = null
+                                                    discoveredShares.value = emptyList()
+                                                    scannedQr.value = null
+                                                    scanMessage.value = "Device disconnected. Scan the Windows QR to pair again."
+                                                    tlsStatus = "Windows trust revoked and local pairing forgotten."
+                                                    status = "Windows device disconnected."
+                                                    transferStatus = null
+                                                }.onFailure {
+                                                    status = "Could not disconnect: " + (it.localizedMessage ?: "Connection error")
+                                                }
+                                                busy = false
+                                                showDisconnectDialog = false
+                                            }
+                                        }
+                                    }
+                                ) { Text("Disconnect & forget", color = androidx.compose.ui.graphics.Color(0xFFB45353)) }
+                            },
+                            dismissButton = {
+                                TextButton(
+                                    enabled = !busy,
+                                    onClick = { showDisconnectDialog = false }
+                                ) { Text("Keep connected") }
+                            }
+                        )
                     }
                 }
             }
