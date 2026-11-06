@@ -74,8 +74,9 @@ See docs/ARCHITECTURE.md, docs/SECURITY.md, and shared/protocol/PROTOCOL.md.
 - [x] Automatic local-network UDP discovery.
 - [x] Windows stable TLS certificate creation/loading in CurrentUser certificate store.
 - [x] Windows QR payload generation and QR preview UI with 120-second expiry.
-- [ ] Android QR scanning and payload validation.
-- [ ] TLS listener and Android certificate fingerprint pinning.
+- [x] Android QR scanning and payload validation.
+- [x] Dedicated Windows TLS diagnostic listener.
+- [x] Android certificate fingerprint pinning and explicit TLS probe.
 - [ ] Server-side one-time nonce validation/consumption.
 - [ ] Explicit pairing approval and proof of possession.
 - [ ] Trust storage and device revocation.
@@ -124,7 +125,7 @@ See docs/ARCHITECTURE.md, docs/SECURITY.md, and shared/protocol/PROTOCOL.md.
 - Disconnect and revoke controls.
 
 ## 7. Current status
-Phase 1 currently provides Windows UDP discovery/TCP diagnostic host, Android UDP discovery/TCP diagnostic client, HELLO/WELCOME, and PING/PONG. Windows now creates/loads a stable self-signed TLS certificate in the current user's certificate store and displays a QR payload preview containing a 120-second nonce and endpoint hint. The preview is not an active pairing flow: Android scanning, TLS listener/pinning, nonce validation, authenticated approval/proof, trust/revocation, and physical-device interoperability remain pending. The diagnostic TCP channel is plaintext and unauthenticated. No file transfer is enabled.
+Phase 1 provides Windows UDP discovery, a plaintext TCP diagnostic on port 45821, and a separate TLS diagnostic listener on port 45822. Android can scan and validate the Windows QR, explicitly connect to the TLS endpoint, and verify the server certificate's exact SHA-256 fingerprint. This is a TLS identity probe only: nonce validation/consumption, authenticated approval/proof, trust storage/revocation, and physical-device interoperability remain pending. No file transfer is enabled.
 
 ## 8. Decision log
 - Prefer 5 GHz for primary performance tests; do not require it.
