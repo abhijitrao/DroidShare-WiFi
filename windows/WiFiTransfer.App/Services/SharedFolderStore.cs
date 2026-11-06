@@ -39,7 +39,7 @@ public sealed class SharedFolderStore
         var root = Path.GetFullPath(selectedPath.Trim());
         if (!Directory.Exists(root))
             throw new DirectoryNotFoundException("The selected folder does not exist.");
-        RejectReparsePoint(root);
+        RejectExistingReparsePoints(root, root);
 
         lock (_gate)
         {
@@ -49,7 +49,7 @@ public sealed class SharedFolderStore
                 throw new InvalidOperationException("This folder is already shared.");
 
             var share = new SharedFolderShare(
-                Guid.NewGuid(), new DirectoryInfo(root).Name, root,
+                Guid.NewGuid(), (string.IsNullOrWhiteSpace(new DirectoryInfo(root).Name) ? root : new DirectoryInfo(root).Name), root,
                 CanRead: true, CanWrite: false, CanDelete: false, CanStream: true,
                 DateTimeOffset.UtcNow);
             shares.Add(share);
@@ -161,7 +161,7 @@ public sealed class SharedFolderStore
         try
         {
             var shares = JsonSerializer.Deserialize<List<SharedFolderShare>>(File.ReadAllText(_path)) ?? [];
-            return shares.Where(s => !string.IsNullOrWhiteSpace(s.RootPath) && Guid.TryParse(s.ShareId.ToString(), out _)).ToList();
+            return shares.Where(s => s.ShareId != Guid.Empty && !string.IsNullOrWhiteSpace(s.RootPath)).ToList();
         }
         catch (JsonException)
         {
