@@ -80,7 +80,8 @@ See docs/ARCHITECTURE.md, docs/SECURITY.md, and shared/protocol/PROTOCOL.md.
 - [x] Server-side one-time nonce validation/consumption.
 - [x] Explicit Windows pairing approval and Android proof of possession.
 - [x] Persist trusted Android public-key identity on Windows and Windows certificate pin on Android.
-- [ ] Trusted-device revocation UI and recovery flow.
+- [x] Windows trusted-device listing and revocation.
+- [x] Recovery when the Windows trust record exists but Android missed the final response.
 - [ ] Physical-device tests on router and supported hotspot topology.
 **Exit:** authenticated local session without manual IP/port entry. No file API before exit.
 
@@ -126,7 +127,7 @@ See docs/ARCHITECTURE.md, docs/SECURITY.md, and shared/protocol/PROTOCOL.md.
 - Disconnect and revoke controls.
 
 ## 7. Current status
-Phase 1 provides Windows UDP discovery, a plaintext TCP diagnostic on port 45821, and TLS pairing on port 45822. Android scans the QR, pins the Windows certificate, submits its Android Keystore P-256 public key, and signs a fresh challenge after explicit Windows approval. Windows validates and consumes the one-time QR nonce, persists the Android public key, and provides a UI to revoke paired devices. Android persists the Windows certificate pin after final approval. Physical-device interoperability, Android-side trust management, and file transfer remain pending. No file transfer is enabled.
+Phase 1 provides Windows UDP discovery, a plaintext TCP diagnostic on port 45821, and TLS pairing on port 45822. Android scans the QR, pins the Windows certificate, submits its Android Keystore P-256 public key, and signs a fresh challenge after explicit Windows approval. Windows validates and consumes the one-time QR nonce, persists the Android public key, and provides a UI to revoke paired devices. Android persists the Windows certificate pin after final approval. Physical-device interoperability, Android-side trust management and file transfer remain pending. No file transfer is enabled.
 
 ## 8. Decision log
 - Prefer 5 GHz for primary performance tests; do not require it.
