@@ -19,7 +19,7 @@ public sealed class PairingQrService
     public PairingQrData Create(
         X509Certificate2 certificate,
         string hostAddress,
-        int port = TcpHostService.Port)
+        int port = TlsHostService.Port)
     {
         if (!IPAddress.TryParse(hostAddress, out var address) ||
             address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork ||
