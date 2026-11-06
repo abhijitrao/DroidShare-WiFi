@@ -14,13 +14,17 @@
 6. Android sends PING; Windows returns PONG and Android displays round-trip time.
 7. This exchange is plaintext and unauthenticated. It is not a secure session and does not permit file access.
 
+## TLS diagnostic probe (implemented; pairing is next)
+1. Windows creates or loads a stable TLS certificate and displays a QR code containing device identity, endpoint hint, certificate SHA-256 fingerprint, and a short-lived nonce.
+2. Android scans the QR code, validates schema and expiry, and waits for the user to tap **Connect securely**.
+3. Windows accepts TLS on port 45822. Android validates the certificate validity period and exact SHA-256 fingerprint from the QR before sending `SECURE_HELLO`.
+4. Windows returns `TLS_READY` over the encrypted connection. The probe does not consume the nonce or establish device trust.
+
 ## Next: QR pairing and authenticated session
-1. Windows creates or loads a stable TLS certificate and displays a QR code containing device identity, endpoint hint, certificate SHA-256 fingerprint, and a short-lived one-time nonce.
-2. Android scans the QR code, validates schema and expiry, connects, and pins the TLS certificate fingerprint.
-3. Android presents its public-key identity over TLS.
-4. Windows asks the user to approve the Android device; Android confirms the Windows identity.
-5. Both sides complete a challenge/proof exchange and persist trust only after successful confirmation.
-6. Trusted devices can be revoked. No filesystem API is enabled until this milestone is complete.
+1. Android presents its public-key identity over the already pinned TLS connection.
+2. Windows asks the user to approve the Android device; Android confirms the Windows identity.
+3. Both sides complete a challenge/proof exchange and persist trust only after successful confirmation.
+4. Trusted devices can be revoked. No filesystem API is enabled until this milestone is complete.
 
 The pairing message sequence, expiry, replay rules, and QR schema are specified in shared/protocol/PROTOCOL.md. Security requirements are in docs/SECURITY.md.
 
