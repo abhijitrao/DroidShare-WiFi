@@ -112,7 +112,7 @@ public partial class MainWindow : Window
         PairingQrImage.Source = bitmap;
         PairingStatusText.Text =
             $"TLS diagnostic endpoint · {Environment.MachineName} · {hostAddress}:{TlsHostService.Port}. " +
-            "QR scan and TLS pin check are available; pairing and file access remain disabled.";
+            "Scan to pair with explicit Windows approval; file access remains disabled.";
         UpdateQrExpiryText();
         _qrExpiryTimer.Start();
     }
@@ -125,7 +125,7 @@ public partial class MainWindow : Window
             _qrExpiryTimer.Stop();
             PairingQrImage.Source = null;
             _pendingPairing.Invalidate();
-            PairingStatusText.Text = "QR preview expired. Refresh it when the secure pairing flow is ready.";
+            PairingStatusText.Text = "Pairing QR expired. Refresh it to start a new pairing attempt.";
             ExpiryText.Text = "QR expires in: expired";
         }
     }
