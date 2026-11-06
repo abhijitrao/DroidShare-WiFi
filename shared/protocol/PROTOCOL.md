@@ -6,7 +6,7 @@ The current implementation supports UDP discovery, certificate-pinned TLS, first
 ## Existing diagnostic transport
 - Discovery: IPv4 UDP broadcast on port 45820.
 - Diagnostic TCP session: port 45821 (plaintext; connectivity testing only).
-- TLS pairing session: port 45822 (certificate pinning and first-time device pairing; no file access).
+- TLS session: port 45822 (certificate-pinned pairing, trusted-session authentication, and read-only folder metadata browsing).
 - Control messages: UTF-8 JSON, one object per line, maximum 16 KiB.
 - Protocol version: integer 1.
 
@@ -15,7 +15,7 @@ Android broadcasts the exact UTF-8 payload:
 
     DROIDSHARE_DISCOVER_V1
 
-Windows replies by unicast with JSON containing type DROIDSHARE_DEVICE, protocolVersion 1, deviceName, and tcpPort 45821. UDP discovery is untrusted metadata only. It is never proof of identity and must not authorize pairing or file access.
+Windows replies by unicast with JSON containing type DROIDSHARE_DEVICE, protocolVersion 1, deviceName, deviceId (first 32 lowercase hex characters of its certificate fingerprint), tlsPort 45822, and tcpPort 45821. All response fields remain untrusted discovery hints; Android must pin the TLS certificate before using the identity. UDP discovery is untrusted metadata only. It is never proof of identity and must not authorize pairing or file access.
 
 ### Diagnostic handshake
 Android sends HELLO and Windows returns WELCOME. Android then sends PING and Windows returns PONG. This exchange is plaintext and unauthenticated. The measured round-trip time is a connectivity diagnostic, not a throughput benchmark. The server applies a five-second idle timeout.
@@ -98,7 +98,7 @@ The Android implementation uses an Android Keystore P-256 signing key. Windows s
 - For reconnect, Android pins the stored certificate, sends `SESSION_HELLO` with its device ID and public key, receives a fresh 256-bit `SESSION_CHALLENGE`, and signs it using the Android Keystore key in `SESSION_PROOF`.
 - Windows checks the active trusted-device record and exact public key before issuing the challenge, verifies the proof, then re-checks trust before returning `SESSION_READY`.
 - `SESSION_READY` returns only shares with Read permission. It includes opaque share IDs, display names, and permission flags; absolute Windows paths are never sent.
-- Android requests a root listing with `LIST_DIRECTORY` (`shareId`, empty `path`). Windows re-checks trust and Read permission, resolves the path beneath the configured share root, skips reparse points, and returns up to 500 entry names/types/sizes/timestamps in `DIRECTORY_LIST`.
+- Android requests a root listing with `LIST_DIRECTORY` (`shareId`, empty `path`). Windows re-checks trust and Read permission, resolves the path beneath the configured share root, skips reparse points, and returns up to 500 entry names/types/sizes/timestamps, with the serialized response capped at 12 KiB in `DIRECTORY_LIST`.
 - Trust is checked again before each listing request so a revoked device cannot continue browsing on an existing session. Session connections have a 45-second server-side lifetime.
 - This is metadata browsing only. No file contents are transferred, and upload/download/write/delete/stream APIs remain disabled. Nested folder navigation is a follow-up.
 - The Windows path guard remains a lexical and reparse-point defense; before file content operations are enabled, use handle-based/reparse-safe operations to mitigate TOCTOU races.
@@ -107,7 +107,7 @@ The Android implementation uses an Android Keystore P-256 signing key. Windows s
 Any breaking wire-format change requires a protocol version change and updates to both platforms.
 
 Before file transfer is enabled:
-- Complete TLS, QR pairing, device identity, trust storage, and revocation.
+- Add Android-side trust management and physical-device tests for reconnect and revocation.
 - Define length-prefixed control/data framing and transfer IDs.
 - Add manifests, bounded chunks, durable acknowledgements, pause/resume, and SHA-256 verification.
 - Enforce selected-share authorization and canonical path containment on Windows.
