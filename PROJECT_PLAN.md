@@ -126,7 +126,7 @@ See docs/ARCHITECTURE.md, docs/SECURITY.md, and shared/protocol/PROTOCOL.md.
 - Disconnect and revoke controls.
 
 ## 7. Current status
-Phase 1 provides Windows UDP discovery, a plaintext TCP diagnostic on port 45821, and a separate TLS diagnostic listener on port 45822. Android can scan and validate the Windows QR, explicitly connect to the TLS endpoint, and verify the server certificate's exact SHA-256 fingerprint. This is a TLS identity probe only: nonce validation/consumption, authenticated approval/proof, trust storage/revocation, and physical-device interoperability remain pending. No file transfer is enabled.
+Phase 1 provides Windows UDP discovery, a plaintext TCP diagnostic on port 45821, and TLS pairing on port 45822. Android scans the QR, pins the Windows certificate, submits its Android Keystore P-256 public key, and signs a fresh challenge after explicit Windows approval. Windows validates and consumes the one-time QR nonce, persists the Android public key, and provides a UI to revoke paired devices. Android persists the Windows certificate pin after final approval. Physical-device interoperability, Android-side trust management, and file transfer remain pending. No file transfer is enabled.
 
 ## 8. Decision log
 - Prefer 5 GHz for primary performance tests; do not require it.
