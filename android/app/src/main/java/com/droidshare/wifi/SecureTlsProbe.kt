@@ -388,7 +388,7 @@ object SecureTlsProbe {
         onProgress: (Long, Long) -> Unit
     ): String {
         val name = queryDisplayName(context, source)
-        val path = if (targetFolder.isBlank()) "$targetFolder/$name" else "$targetFolder/$name"
+        val path = if (targetFolder.isBlank()) name else "$targetFolder/$name"
         return uploadFiles(context, host, port, windowsDeviceId, shareId,
             listOf(UploadSource(source, path))) { _, current, total, _, _ ->
             onProgress(current, total)
