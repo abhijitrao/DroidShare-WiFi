@@ -54,6 +54,76 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun collectFolderUploadSources(
+        treeUri: android.net.Uri,
+        targetFolder: String
+    ): Pair<List<SecureTlsProbe.UploadSource>, List<String>> {
+        val resolver = contentResolver
+        val rootDocumentId = android.provider.DocumentsContract.getTreeDocumentId(treeUri)
+        val rootDocumentUri = android.provider.DocumentsContract.buildDocumentUriUsingTree(treeUri, rootDocumentId)
+        val rootName = resolver.query(
+            rootDocumentUri, arrayOf(android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+            null, null, null
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0) else null
+        }?.takeIf { it.isNotBlank() } ?: throw IllegalStateException("Could not read the selected folder name.")
+
+        fun validateSegment(value: String): String {
+            require(value.isNotBlank() && value.length <= 240 && value !in setOf(".", "..") &&
+                value.none { it == '/' || it == '\\' || it == '\u0000' }) {
+                "Folder contains an invalid file or folder name."
+            }
+            return value
+        }
+
+        val rootPath = if (targetFolder.isBlank()) validateSegment(rootName)
+            else "${targetFolder}/${validateSegment(rootName)}"
+        val files = mutableListOf<SecureTlsProbe.UploadSource>()
+        val directories = linkedSetOf<String>()
+        val visited = hashSetOf<String>()
+
+        fun walk(documentId: String, relativePath: String, depth: Int) {
+            require(depth <= 64) { "Selected folder nesting exceeds 64 levels." }
+            require(visited.add(documentId)) { "Folder provider returned a directory cycle." }
+            directories.add(relativePath)
+            val childrenUri = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, documentId)
+            resolver.query(
+                childrenUri,
+                arrayOf(
+                    android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                    android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                    android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE
+                ),
+                null, null, null
+            )?.use { cursor ->
+                val idColumn = cursor.getColumnIndexOrThrow(android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                val nameColumn = cursor.getColumnIndexOrThrow(android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                val mimeColumn = cursor.getColumnIndexOrThrow(android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE)
+                while (cursor.moveToNext()) {
+                    val childId = cursor.getString(idColumn)
+                    val childName = validateSegment(cursor.getString(nameColumn) ?: "")
+                    val childPath = "${relativePath}/${childName}"
+                    require(childPath.length <= 2048) { "A selected file or folder path is too long." }
+                    if (cursor.getString(mimeColumn) == android.provider.DocumentsContract.Document.MIME_TYPE_DIR) {
+                        walk(childId, childPath, depth + 1)
+                    } else {
+                        require(files.size < 1000) { "A folder upload is limited to 1,000 files." }
+                        files.add(
+                            SecureTlsProbe.UploadSource(
+                                android.provider.DocumentsContract.buildDocumentUriUsingTree(treeUri, childId),
+                                childPath
+                            )
+                        )
+                    }
+                    require(directories.size <= 10000) { "A folder upload is limited to 10,000 folders." }
+                }
+            } ?: throw IllegalStateException("Android could not read a folder's contents.")
+        }
+
+        walk(rootDocumentId, rootPath, 0)
+        return files to directories.toList()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -203,7 +273,59 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-                        LaunchedEffect(Unit) {
+                        val folderUploadLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.OpenDocumentTree()
+            ) { treeUri ->
+                val share = pendingUpload
+                val endpoint = connectedEndpoint
+                pendingUpload = null
+                if (treeUri == null) {
+                    transferStatus = "Folder upload cancelled."
+                } else if (share != null && endpoint != null) {
+                    runCatching {
+                        contentResolver.takePersistableUriPermission(
+                            treeUri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        )
+                    }
+                    scope.launch {
+                        busy = true
+                        transferBytes = 0L
+                        transferTotal = 0L
+                        transferSpeed = 0L
+                        transferStatus = "Scanning selected folder…"
+                        val transferStartedAt = SystemClock.elapsedRealtime()
+                        val result = withContext(Dispatchers.IO) {
+                            runCatching {
+                                val (files, directories) = collectFolderUploadSources(treeUri, share.currentPath)
+                                SecureTlsProbe.uploadFiles(
+                                    this@MainActivity, endpoint.first, endpoint.second, endpoint.third,
+                                    share.shareId, files, directories
+                                ) { index, fileSent, fileTotal, totalSent, totalBytes ->
+                                    transferBytes = totalSent
+                                    transferTotal = totalBytes
+                                    val elapsed = (SystemClock.elapsedRealtime() - transferStartedAt).coerceAtLeast(1L)
+                                    transferSpeed = totalSent * 1000L / elapsed
+                                    transferStatus = if (files.isEmpty()) {
+                                        "Creating folder structure…"
+                                    } else {
+                                        "Uploading ${index + 1}/${files.size} · ${fileSent} / ${fileTotal} bytes"
+                                    }
+                                }
+                                "Uploaded folder structure · ${files.size} file(s), ${directories.size} folder(s)"
+                            }
+                        }
+                        result.onSuccess {
+                            transferStatus = it
+                            browseShare(share, share.currentPath)
+                        }.onFailure {
+                            transferStatus = "Folder upload failed: " + (it.localizedMessage ?: "Transfer error")
+                        }
+                        busy = false
+                    }
+                }
+            }
+
+            LaunchedEffect(Unit) {
                 busy = true
                 status = "Checking for a previously paired Windows device…"
                 val result = withContext(Dispatchers.IO) { discoverAndHandshake(autoReconnectOnly = true) }
@@ -474,6 +596,17 @@ class MainActivity : ComponentActivity() {
                                             ) {
                                                 Text(if (share.currentPath.isBlank()) "UPLOAD TO THIS FOLDER" else "UPLOAD TO CURRENT FOLDER",
                                                     color = violet)
+                                            }
+                                            OutlinedButton(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                enabled = !busy && connectedEndpoint != null,
+                                                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                                                onClick = {
+                                                    pendingUpload = share
+                                                    folderUploadLauncher.launch(null)
+                                                }
+                                            ) {
+                                                Text("UPLOAD FOLDER", color = violet)
                                             }
                                         }
                                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
