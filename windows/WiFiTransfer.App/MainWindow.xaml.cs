@@ -22,6 +22,7 @@ public partial class MainWindow : Window
     private readonly SharedFolderStore _sharedFolders = new();
     private PairingQrService _pairingQrService = null!;
     private readonly DispatcherTimer _qrExpiryTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private readonly DispatcherTimer _networkRefreshTimer = new() { Interval = TimeSpan.FromMilliseconds(750) };
     private X509Certificate2? _certificate;
     private PairingQrData? _pairingQrData;
 
@@ -32,6 +33,8 @@ public partial class MainWindow : Window
         Loaded += OnLoaded;
         Closed += OnClosed;
         _qrExpiryTimer.Tick += OnQrExpiryTimerTick;
+        _networkRefreshTimer.Tick += OnNetworkRefreshTimerTick;
+        NetworkChange.NetworkAddressChanged += OnNetworkAddressChanged;
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -50,17 +53,8 @@ public partial class MainWindow : Window
                 Dispatcher.Invoke(() => LastEventText.Text = $"Android diagnostic handshake from {remote}");
 
             StatusText.Text = "Running — waiting for Android discovery";
-            var addresses = GetLocalIpv4Addresses();
-            NetworkText.Text = addresses.Count == 0
-                ? "No active IPv4 interface detected"
-                : $"Active IPv4: {string.Join("  •  ", addresses)}";
-
+            RefreshNetworkStateAndQr(forceQrRefresh: true);
             FingerprintText.Text = $"Certificate SHA-256: {WindowsIdentityService.GetSha256Fingerprint(_certificate)}";
-            RefreshQrButton.IsEnabled = addresses.Count > 0;
-            if (addresses.Count > 0)
-                CreateQrPreview(addresses[0]);
-            else
-                PairingStatusText.Text = "Connect Windows to Wi-Fi, then refresh the QR preview.";
         }
         catch (Exception ex)
         {
@@ -96,14 +90,51 @@ public partial class MainWindow : Window
 
     private void RefreshQrButton_Click(object sender, RoutedEventArgs e)
     {
-        var address = GetLocalIpv4Addresses().FirstOrDefault();
-        if (address is null || _certificate is null)
+        RefreshNetworkStateAndQr(forceQrRefresh: true);
+    }
+
+    private void OnNetworkAddressChanged(object? sender, EventArgs e)
+    {
+        Dispatcher.BeginInvoke(() =>
         {
-            PairingStatusText.Text = "No active IPv4 address or Windows certificate is available.";
+            if (!_networkRefreshTimer.IsEnabled)
+                _networkRefreshTimer.Start();
+        });
+    }
+
+    private void OnNetworkRefreshTimerTick(object? sender, EventArgs e)
+    {
+        _networkRefreshTimer.Stop();
+        RefreshNetworkStateAndQr(forceQrRefresh: false);
+    }
+
+    private void RefreshNetworkStateAndQr(bool forceQrRefresh)
+    {
+        var addresses = GetLocalIpv4Addresses();
+        NetworkText.Text = addresses.Count == 0
+            ? "No active IPv4 interface detected"
+            : $"Active IPv4: {string.Join("  •  ", addresses)}";
+        RefreshQrButton.IsEnabled = addresses.Count > 0;
+
+        var preferredAddress = addresses.FirstOrDefault();
+        if (_certificate is null) return;
+
+        if (preferredAddress is null)
+        {
+            PairingQrImage.Source = null;
+            _pairingQrData = null;
+            _qrExpiryTimer.Stop();
+            _pendingPairing.Invalidate();
+            PairingStatusText.Text = "No active IPv4 address. Connect Windows to Wi-Fi or Ethernet.";
+            ExpiryText.Text = "QR unavailable";
             return;
         }
 
-        CreateQrPreview(address);
+        if (forceQrRefresh || _pairingQrData is null ||
+            !string.Equals(_pairingQrData.Host, preferredAddress, StringComparison.Ordinal))
+        {
+            CreateQrPreview(preferredAddress);
+        }
     }
 
     private void CreateQrPreview(string hostAddress)
@@ -156,6 +187,8 @@ public partial class MainWindow : Window
     private async void OnClosed(object? sender, EventArgs e)
     {
         _qrExpiryTimer.Stop();
+        _networkRefreshTimer.Stop();
+        NetworkChange.NetworkAddressChanged -= OnNetworkAddressChanged;
         _pairingQrData = null;
         _pendingPairing.Invalidate();
         if (_tls is not null) await _tls.DisposeAsync();
