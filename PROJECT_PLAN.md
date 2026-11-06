@@ -116,8 +116,8 @@ DroidShare-WiFi/
 **Exit:** a clean, understandable monorepo with documented build commands.
 
 ### Phase 1 — Connection foundation
-- Windows TCP listener and status UI.
-- Android TCP client and connection status UI.
+- [x] Windows TCP listener and status UI.
+- [x] Android TCP client and connection status UI.
 - Protocol version handshake and ping/pong diagnostic.
 - Automatic local-network discovery.
 - QR pairing for first trust/fallback.
@@ -203,7 +203,7 @@ Report measured MB/s; do not advertise theoretical Wi-Fi link rates as file-tran
 - Shared folders: user-selected roots only, with permissions.
 - Router/hotspot: both supported where local peer connectivity is available.
 - UPnP AV / DLNA and remote shared-folder access are planned after the transfer foundation.
-- Current implementation status: Phase 1 starter code committed — Windows WPF TCP diagnostic listener + UDP discovery responder, Android Compose UDP discovery + TCP HELLO/WELCOME client, protocol draft, build workflow, and local test guide. CI/build and physical-device interoperability results are pending; this is not yet file transfer or a secure production session.
+- Phase 1 implementation now includes Windows WPF UDP discovery/TCP diagnostic host, Android Compose discovery/TCP client, HELLO/WELCOME handshake, PING/PONG round-trip diagnostic, protocol documentation, and CI. GitHub Actions run 10 passed for both Android and Windows builds. Physical-device interoperability and QR pairing remain pending. This is not yet a secure production session or file transfer.
 
 ## 9. Decision log
 - Prefer 5 GHz router as the primary performance test environment, but do not hard-code or require 5 GHz.
