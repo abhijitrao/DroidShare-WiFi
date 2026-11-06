@@ -82,7 +82,7 @@ After scanning, Android validates the QR schema and expiry, connects using TLS, 
 6. Android stores the Windows device ID and pinned certificate fingerprint only after receiving the final successful pairing response.
 7. Both sides show an explicit paired state. Failed, rejected, expired, or interrupted flows leave no trusted-device record.
 
-The Android implementation uses an Android Keystore P-256 signing key. Windows stores the public key and metadata in a LocalAppData JSON file and provides a paired-device manager with explicit revocation. Android stores the Windows device ID and certificate pin in app-private preferences. Android-side trusted-device management and lost-final-response recovery are still required. Never log QR contents, nonce values, private keys, or proof payloads.
+The Android implementation uses an Android Keystore P-256 signing key. Windows stores the public key and metadata in a LocalAppData JSON file and provides a paired-device manager with explicit revocation. Android stores the Windows device ID and certificate pin in app-private preferences. Android-side trusted-device management is still required. If Windows already has the same device ID and identical public key, it allows a new explicit approval and challenge proof to recover Android's missed final response; a different key under the same active device ID is rejected. Never log QR contents, nonce values, private keys, or proof payloads.
 
 ### Replay, abuse, and lifecycle
 - Nonces are random, expire, and are consumed atomically once.
