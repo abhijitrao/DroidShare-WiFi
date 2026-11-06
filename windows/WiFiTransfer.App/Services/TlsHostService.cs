@@ -89,9 +89,10 @@ public sealed class TlsHostService : IAsyncDisposable
                 var deviceId = GetString(hello, "androidDeviceId");
                 var deviceName = GetString(hello, "deviceName");
                 var publicKeyBase64 = GetString(hello, "publicKey");
+                var publicKeyAlgorithm = GetString(hello, "publicKeyAlgorithm");
                 if (nonce is null || deviceId is null || !Guid.TryParse(deviceId, out _) ||
-                    deviceName is null || deviceName.Length is < 1 or > 64 ||
-                    publicKeyBase64 is null || publicKeyBase64.Length > 4096)
+                    string.IsNullOrWhiteSpace(deviceName) || deviceName.Length > 64 ||
+                    publicKeyAlgorithm != "ECDSA_P256" || publicKeyBase64 is null || publicKeyBase64.Length > 4096)
                 { await SendErrorAsync(writer, "Pairing identity fields are invalid."); return; }
 
                 if (!_pendingPairing.TryReserve(nonce))
