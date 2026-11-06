@@ -98,7 +98,8 @@ See docs/ARCHITECTURE.md, docs/SECURITY.md, and shared/protocol/PROTOCOL.md.
 - [x] Add nested folder navigation with clickable breadcrumbs and back navigation on Android.
 - [x] Single-file Windows-to-Android download over authenticated TLS using fixed-length raw binary streaming, bounded 256 KiB buffers, Android destination picker, live progress/speed, and SHA-256 verification.
 - [ ] Android-to-Windows upload, multi-file queue, cancellation, pause/resume, and transfer history.
-**Exit:** repeatable transfers with bounded memory. Trusted Android devices can browse Windows shares and download one file at a time with SHA-256 verification. Android upload, multi-file queue, cancellation/pause/resume, write/delete, and media streaming remain future work.
+- [x] Android Disconnect & Forget action with authenticated Windows-side self-revocation and local pin removal.
+**Exit:** repeatable transfers with bounded memory. Trusted Android devices can browse Windows shares and download one file at a time with SHA-256 verification. Android upload, multi-file queue, cancellation/pause/resume, write/delete, and media streaming remain future work. Android now supports a confirmed Disconnect & Forget action that revokes its identity on Windows and removes the local pin only after acknowledgement.
 
 ### Phase 3 — Folder transfer
 - Recursive manifest, directory creation, conflict policy, path validation.
