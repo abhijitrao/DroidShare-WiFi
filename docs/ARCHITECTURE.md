@@ -28,7 +28,7 @@ The pairing message sequence, expiry, replay rules, and QR schema are specified 
 - New shares default to Read + Stream; Write and Delete are opt-in. Removing a share never deletes its contents.
 - Share definitions are persisted under the current user's LocalAppData application directory.
 - `SharedFolderStore.ResolveAuthorizedPath` enforces share permission and canonical path containment, rejecting rooted paths, traversal segments, paths outside the selected root, and existing reparse points in the root ancestry or requested path.
-- The authenticated network API exposes only Read-enabled shares and bounded directory metadata. Android supports root/nested browsing and single-file downloads to a user-selected document destination. Download uses ordered 8 KiB chunks and a final SHA-256 check. Upload, multi-file queue, pause/resume, cancellation UI, delete, and stream APIs remain disabled. The current path validation has a check/open race; handle-based/reparse-safe file access is required before production use.
+- The authenticated network API exposes only Read-enabled shares and bounded directory metadata. Android supports root/nested browsing and single-file downloads to a user-selected document destination. Download uses a fixed-length raw binary body over TLS with a bounded 256 KiB buffer and a final SHA-256 check. Upload, multi-file queue, pause/resume, cancellation UI, delete, and stream APIs remain disabled. The current path validation has a check/open race; handle-based/reparse-safe file access is required before production use.
 
 ## Authenticated sessions and remote folder metadata browsing
 - UDP discovery advertises the stable Windows certificate-derived device ID and TLS port as untrusted connection hints.
@@ -36,7 +36,7 @@ The pairing message sequence, expiry, replay rules, and QR schema are specified 
 - Windows checks the active trusted-device record before and after proof verification and before each directory listing request, so revocation prevents further browsing.
 - `SESSION_READY` exposes only shares with Read permission and never exposes absolute Windows paths.
 - `LIST_DIRECTORY` accepts a validated relative path beneath the selected share and returns a bounded metadata listing (maximum 500 entries); reparse-point entries are skipped. Android navigates nested directories with root/ancestor breadcrumbs and back navigation. Each navigation currently opens a fresh authenticated TLS session.
-- `DOWNLOAD_FILE` reauthenticates the trusted Android identity, rechecks Read permission and path containment, then sends a bounded stream of Base64-encoded 8 KiB chunks. Android writes directly to the SAF destination and verifies byte count and SHA-256 before reporting completion.
+- `DOWNLOAD_FILE` reauthenticates the trusted Android identity, rechecks Read permission and path containment, sends a JSON header followed by a fixed-length raw binary body using a bounded 256 KiB buffer, then sends a JSON trailer with byte count and SHA-256. Android writes directly to the SAF destination and verifies byte count and SHA-256 before reporting completion.
 - Android shows shared folder names, permissions, and entries in a modern card-based UI. File rows offer a Download action, Android destination picker, and a transfer card with progress and speed.
 
 ## Later architecture
