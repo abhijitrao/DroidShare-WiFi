@@ -14,6 +14,7 @@ namespace WiFiTransfer.App;
 public partial class MainWindow : Window
 {
     private readonly TcpHostService _tcp = new();
+    private TlsHostService? _tls;
     private readonly UdpDiscoveryService _discovery = new();
     private readonly WindowsIdentityService _identityService = new();
     private readonly PairingQrService _pairingQrService = new();
@@ -34,6 +35,10 @@ public partial class MainWindow : Window
         try
         {
             _certificate = _identityService.GetOrCreateCertificate();
+            _tls = new TlsHostService(_certificate);
+            await _tls.StartAsync();
+            _tls.SecureClientConnected += remote =>
+                Dispatcher.Invoke(() => LastEventText.Text = $"Certificate-pinned TLS diagnostic from {remote}");
             await _tcp.StartAsync();
             await _discovery.StartAsync();
             _tcp.ClientConnected += remote =>
@@ -90,8 +95,8 @@ public partial class MainWindow : Window
 
         PairingQrImage.Source = bitmap;
         PairingStatusText.Text =
-            $"Preview only · {Environment.MachineName} · {hostAddress}:{TcpHostService.Port}. " +
-            "Do not scan yet; secure pairing is not active.";
+            $"TLS diagnostic endpoint · {Environment.MachineName} · {hostAddress}:{TlsHostService.Port}. " +
+            "QR scan and TLS pin check are available; pairing and file access remain disabled.";
         UpdateQrExpiryText();
         _qrExpiryTimer.Start();
     }
@@ -122,6 +127,7 @@ public partial class MainWindow : Window
         _qrExpiryTimer.Stop();
         _pairingQrData = null;
         _certificate?.Dispose();
+        if (_tls is not null) await _tls.DisposeAsync();
         await _discovery.DisposeAsync();
         await _tcp.DisposeAsync();
     }
