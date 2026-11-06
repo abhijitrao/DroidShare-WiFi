@@ -77,9 +77,10 @@ See docs/ARCHITECTURE.md, docs/SECURITY.md, and shared/protocol/PROTOCOL.md.
 - [x] Android QR scanning and payload validation.
 - [x] Dedicated Windows TLS diagnostic listener.
 - [x] Android certificate fingerprint pinning and explicit TLS probe.
-- [ ] Server-side one-time nonce validation/consumption.
-- [ ] Explicit pairing approval and proof of possession.
-- [ ] Trust storage and device revocation.
+- [x] Server-side one-time nonce validation/consumption.
+- [x] Explicit Windows pairing approval and Android proof of possession.
+- [x] Persist trusted Android public-key identity on Windows and Windows certificate pin on Android.
+- [ ] Trusted-device revocation UI and recovery flow.
 - [ ] Physical-device tests on router and supported hotspot topology.
 **Exit:** authenticated local session without manual IP/port entry. No file API before exit.
 
