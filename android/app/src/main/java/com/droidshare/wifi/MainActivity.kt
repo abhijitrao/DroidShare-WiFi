@@ -91,7 +91,7 @@ class MainActivity : ComponentActivity() {
                                 Text("DroidShare", style = MaterialTheme.typography.titleLarge,
                                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = ink)
                                 Text("PRIVATE • LOCAL • SECURE", style = MaterialTheme.typography.labelSmall,
-                                    color = muted, letterSpacing = androidx.compose.ui.unit.sp(1.2f))
+                                    color = muted)
                             }
                         }
 
