@@ -407,7 +407,7 @@ object SecureTlsProbe {
         onProgress: (Int, Long, Long, Long, Long) -> Unit
     ): List<String> {
         require(shareId.matches(Regex("^[a-fA-F0-9-]{36}$"))) { "Invalid shared folder ID." }
-        require(sources.isNotEmpty()) { "Select at least one file to upload." }
+        require(sources.isNotEmpty() || directories.isNotEmpty()) { "Select files or a folder to upload." }
         require(sources.size <= 1000) { "A single upload batch is limited to 1,000 files." }
 
         data class PreparedUpload(val uri: Uri, val path: String, val size: Long, val hash: String)
