@@ -1,5 +1,23 @@
 package com.droidshare.wifi
 
+
+data class RemoteDirectoryEntry(
+    val name: String,
+    val isDirectory: Boolean,
+    val size: Long,
+    val modifiedUtc: String
+)
+
+data class RemoteShare(
+    val shareId: String,
+    val name: String,
+    val canWrite: Boolean,
+    val canDelete: Boolean,
+    val canStream: Boolean,
+    val entries: List<RemoteDirectoryEntry>,
+    val truncated: Boolean
+)
+
 import android.content.Context
 import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
@@ -136,6 +154,133 @@ object SecureTlsProbe {
                 " · Android key proof verified. File sharing is not enabled yet."
         }
     }
+
+
+    fun connectTrusted(context: Context, host: String, port: Int, windowsDeviceId: String): List<RemoteShare> {
+        require(windowsDeviceId.matches(Regex("^[a-f0-9]{32}$"))) { "Invalid Windows device identity." }
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val fingerprint = prefs.getString("trusted_windows_" + windowsDeviceId, null)
+            ?: throw IllegalStateException("This Windows device is not paired yet. Scan its pairing QR first.")
+        require(fingerprint.matches(Regex("^[a-f0-9]{64}$")) &&
+            fingerprint.take(32) == windowsDeviceId) { "Saved Windows trust information is invalid." }
+
+        val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        check(keyStore.containsAlias(KEY_ALIAS)) { "Android identity key is missing. Pair this device again." }
+        val publicKey = keyStore.getCertificate(KEY_ALIAS).publicKey
+        val privateKey = keyStore.getKey(KEY_ALIAS, null) as java.security.PrivateKey
+        val androidDeviceId = prefs.getString("android_device_id", null)
+            ?: throw IllegalStateException("Android device identity is missing. Pair this device again.")
+
+        val trustManager = pinnedTrustManager(fingerprint)
+        val contextTls = SSLContext.getInstance("TLS")
+        contextTls.init(null, arrayOf(trustManager), SecureRandom())
+        val socket = contextTls.socketFactory.createSocket() as SSLSocket
+        socket.use { tls ->
+            tls.connect(InetSocketAddress(host, port), 5000)
+            tls.soTimeout = 15000
+            tls.enabledProtocols = tls.supportedProtocols.filter {
+                it == "TLSv1.3" || it == "TLSv1.2"
+            }.toTypedArray()
+            check(tls.enabledProtocols.isNotEmpty()) { "This Android device does not support TLS 1.2 or newer." }
+            tls.startHandshake()
+
+            writeLine(tls, JSONObject()
+                .put("type", "SESSION_HELLO")
+                .put("protocolVersion", 1)
+                .put("androidDeviceId", androidDeviceId)
+                .put("publicKey", android.util.Base64.encodeToString(publicKey.encoded, android.util.Base64.NO_WRAP)))
+
+            val challengeResponse = JSONObject(readLine(tls.inputStream))
+            if (challengeResponse.optString("type") == "PAIR_ERROR")
+                throw IllegalStateException(challengeResponse.optString("message", "Windows rejected the secure session."))
+            check(challengeResponse.optString("type") == "SESSION_CHALLENGE" &&
+                challengeResponse.optInt("protocolVersion") == 1) {
+                "Windows returned an invalid session challenge."
+            }
+            val challenge = android.util.Base64.decode(
+                challengeResponse.getString("challenge"), android.util.Base64.DEFAULT)
+            require(challenge.size == 32) { "Windows session challenge is malformed." }
+
+            val signer = Signature.getInstance("SHA256withECDSA")
+            signer.initSign(privateKey)
+            signer.update(challenge)
+            writeLine(tls, JSONObject()
+                .put("type", "SESSION_PROOF")
+                .put("protocolVersion", 1)
+                .put("signature", android.util.Base64.encodeToString(signer.sign(), android.util.Base64.NO_WRAP)))
+
+            val ready = JSONObject(readLine(tls.inputStream))
+            if (ready.optString("type") == "PAIR_ERROR")
+                throw IllegalStateException(ready.optString("message", "Windows rejected the secure session."))
+            check(ready.optString("type") == "SESSION_READY" &&
+                ready.optInt("protocolVersion") == 1 &&
+                ready.optString("windowsDeviceId") == windowsDeviceId) {
+                "Windows session identity did not match the saved trust record."
+            }
+
+            val sharesJson = ready.optJSONArray("shares") ?: org.json.JSONArray()
+            val shares = mutableListOf<RemoteShare>()
+            for (index in 0 until sharesJson.length()) {
+                val share = sharesJson.getJSONObject(index)
+                val shareId = share.getString("shareId")
+                val name = share.getString("name")
+                writeLine(tls, JSONObject()
+                    .put("type", "LIST_DIRECTORY")
+                    .put("protocolVersion", 1)
+                    .put("shareId", shareId)
+                    .put("path", ""))
+
+                val listing = JSONObject(readLine(tls.inputStream))
+                if (listing.optString("type") == "SESSION_ERROR")
+                    throw IllegalStateException(listing.optString("message", "Could not list shared folder."))
+                check(listing.optString("type") == "DIRECTORY_LIST" &&
+                    listing.optString("shareId") == shareId) {
+                    "Windows returned an invalid folder listing."
+                }
+                val entriesJson = listing.optJSONArray("entries") ?: org.json.JSONArray()
+                val entries = buildList {
+                    for (entryIndex in 0 until entriesJson.length()) {
+                        val entry = entriesJson.getJSONObject(entryIndex)
+                        add(RemoteDirectoryEntry(
+                            name = entry.optString("name"),
+                            isDirectory = entry.optBoolean("isDirectory"),
+                            size = entry.optLong("size"),
+                            modifiedUtc = entry.optString("modifiedUtc")
+                        ))
+                    }
+                }
+                shares += RemoteShare(
+                    shareId = shareId,
+                    name = name,
+                    canWrite = share.optBoolean("canWrite"),
+                    canDelete = share.optBoolean("canDelete"),
+                    canStream = share.optBoolean("canStream"),
+                    entries = entries,
+                    truncated = listing.optBoolean("truncated")
+                )
+            }
+            return shares
+        }
+    }
+
+    private fun pinnedTrustManager(expectedFingerprint: String): X509TrustManager =
+        object : X509TrustManager {
+            override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {
+                throw java.security.cert.CertificateException("Client certificates are not used by this endpoint.")
+            }
+
+            override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {
+                if (chain.isEmpty()) throw java.security.cert.CertificateException("Windows did not present a TLS certificate.")
+                val certificate = chain[0]
+                certificate.checkValidity()
+                val actual = MessageDigest.getInstance("SHA-256").digest(certificate.encoded)
+                    .joinToString("") { byte -> "%02x".format(byte) }
+                if (!actual.equals(expectedFingerprint, ignoreCase = true))
+                    throw java.security.cert.CertificateException("Windows certificate fingerprint does not match the saved trust record.")
+            }
+
+            override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
+        }
 
     private fun writeLine(socket: SSLSocket, json: JSONObject) {
         socket.outputStream.write((json.toString() + "\n").toByteArray(Charsets.UTF_8))
