@@ -439,19 +439,17 @@ class MainActivity : ComponentActivity() {
                                         scannerLauncher.launch(options)
                                     }
                                 ) { Text("Scan Windows pairing QR") }
-                                if (connectedEndpoint != null) {
-                                    Spacer(Modifier.height(10.dp))
-                                    OutlinedButton(
-                                        modifier = Modifier.fillMaxWidth().height(48.dp),
-                                        enabled = !busy,
-                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
-                                        colors = ButtonDefaults.outlinedButtonColors(
-                                            contentColor = androidx.compose.ui.graphics.Color(0xFFB45353)
-                                        ),
-                                        onClick = { showDisconnectDialog = true }
-                                    ) {
-                                        Text("Disconnect & forget device")
-                                    }
+                                Spacer(Modifier.height(10.dp))
+                                OutlinedButton(
+                                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                                    enabled = !busy,
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        contentColor = androidx.compose.ui.graphics.Color(0xFFB45353)
+                                    ),
+                                    onClick = { showDisconnectDialog = true }
+                                ) {
+                                    Text("Disconnect & forget device")
                                 }
                             }
                         }
@@ -700,11 +698,17 @@ class MainActivity : ComponentActivity() {
                             onDismissRequest = { if (!busy) showDisconnectDialog = false },
                             title = { Text("Disconnect and forget Windows device?") },
                             text = {
-                                Text("DroidShare will ask Windows to revoke this Android device, then remove the saved trust on this phone. Automatic reconnect will stop. To connect again, scan the Windows QR and approve pairing on Windows.")
+                                Text(
+                                    if (connectedEndpoint != null) {
+                                        "DroidShare will ask Windows to revoke this Android device, then remove the saved trust on this phone. Automatic reconnect will stop. To connect again, scan the Windows QR and approve pairing on Windows."
+                                    } else {
+                                        "The Windows device is not currently connected. Reconnect to the Windows device first so DroidShare can revoke its trust and safely remove the saved pairing from this phone."
+                                    }
+                                )
                             },
                             confirmButton = {
                                 TextButton(
-                                    enabled = !busy,
+                                    enabled = !busy && connectedEndpoint != null,
                                     onClick = {
                                         val endpoint = connectedEndpoint
                                         if (endpoint != null) {
