@@ -68,6 +68,7 @@ class MainActivity : ComponentActivity() {
             var tlsStatus by remember { mutableStateOf("Pairing has not been attempted.") }
             var connectedEndpoint by remember { mutableStateOf<Triple<String, Int, String>?>(null) }
             var pendingDownload by remember { mutableStateOf<Pair<RemoteShare, RemoteDirectoryEntry>?>(null) }
+            var pendingUpload by remember { mutableStateOf<RemoteShare?>(null) }
             var transferStatus by remember { mutableStateOf<String?>(null) }
             var transferBytes by remember { mutableStateOf(0L) }
             var transferTotal by remember { mutableStateOf(0L) }
@@ -106,6 +107,49 @@ class MainActivity : ComponentActivity() {
                         }
                         result.onSuccess { transferStatus = it }
                             .onFailure { transferStatus = "Download failed: " + (it.localizedMessage ?: "Transfer error") }
+                        busy = false
+                    }
+                }
+            }
+
+            val uploadLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.OpenDocument()
+            ) { source ->
+                val share = pendingUpload
+                val endpoint = connectedEndpoint
+                pendingUpload = null
+                if (source == null) {
+                    transferStatus = "Upload cancelled."
+                } else if (share != null && endpoint != null) {
+                    runCatching {
+                        contentResolver.takePersistableUriPermission(source, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    scope.launch {
+                        busy = true
+                        transferBytes = 0L
+                        transferTotal = 0L
+                        transferSpeed = 0L
+                        transferStatus = "Preparing secure upload…"
+                        val transferStartedAt = SystemClock.elapsedRealtime()
+                        val result = withContext(Dispatchers.IO) {
+                            runCatching {
+                                SecureTlsProbe.uploadFile(
+                                    this@MainActivity, endpoint.first, endpoint.second, endpoint.third,
+                                    share.shareId, share.currentPath, source
+                                ) { sent, total ->
+                                    transferBytes = sent
+                                    transferTotal = total
+                                    val elapsed = (SystemClock.elapsedRealtime() - transferStartedAt).coerceAtLeast(1L)
+                                    transferSpeed = sent * 1000L / elapsed
+                                }
+                            }
+                        }
+                        result.onSuccess {
+                            transferStatus = it
+                            browseShare(share, share.currentPath)
+                        }.onFailure {
+                            transferStatus = "Upload failed: " + (it.localizedMessage ?: "Transfer error")
+                        }
                         busy = false
                     }
                 }
@@ -395,6 +439,20 @@ class MainActivity : ComponentActivity() {
                                                 fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                                         }
                                         Spacer(Modifier.height(10.dp))
+                                        if (share.canWrite) {
+                                            OutlinedButton(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                enabled = !busy && connectedEndpoint != null,
+                                                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                                                onClick = {
+                                                    pendingUpload = share
+                                                    uploadLauncher.launch(arrayOf("*/*"))
+                                                }
+                                            ) {
+                                                Text(if (share.currentPath.isBlank()) "UPLOAD TO THIS FOLDER" else "UPLOAD TO CURRENT FOLDER",
+                                                    color = violet)
+                                            }
+                                        }
                                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                             if (share.canWrite) PermissionTag("WRITE", violet)
                                             if (share.canDelete) PermissionTag("DELETE", androidx.compose.ui.graphics.Color(0xFFB45353))
