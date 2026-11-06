@@ -112,8 +112,15 @@ public sealed class TlsHostService : IAsyncDisposable
                 { await SendErrorAsync(writer, "Android public key is invalid."); return; }
 
                 var publicKeyFingerprint = Convert.ToHexString(SHA256.HashData(publicKeyBytes)).ToLowerInvariant();
-                if (_trustedDevices.GetAll().Any(d => d.DeviceId == deviceId && !d.IsRevoked))
-                { await SendErrorAsync(writer, "This Android device is already paired. Revoke it before pairing again."); return; }
+                var existingTrustedDevice = _trustedDevices.GetAll()
+                    .FirstOrDefault(d => d.DeviceId == deviceId && !d.IsRevoked);
+                if (existingTrustedDevice is not null &&
+                    !CryptographicOperations.FixedTimeEquals(
+                        Convert.FromBase64String(existingTrustedDevice.PublicKeyBase64), publicKeyBytes))
+                {
+                    await SendErrorAsync(writer, "This Android device ID is already trusted with a different key. Revoke it before pairing a new identity.");
+                    return;
+                }
 
                 var approved = await _approvePairing(new PairingApprovalRequest(deviceId, deviceName, publicKeyFingerprint));
                 if (!approved) { await SendErrorAsync(writer, "Pairing was rejected on Windows."); return; }
@@ -142,7 +149,8 @@ public sealed class TlsHostService : IAsyncDisposable
                     return;
                 }
                 consumed = true;
-                _trustedDevices.AddOrReplace(deviceId, deviceName, publicKeyBase64);
+                if (existingTrustedDevice is null)
+                    _trustedDevices.AddOrReplace(deviceId, deviceName, publicKeyBase64);
                 var certFingerprint = WindowsIdentityService.GetSha256Fingerprint(_certificate);
                 await writer.WriteLineAsync(JsonSerializer.Serialize(new
                 {
