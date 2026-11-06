@@ -126,10 +126,10 @@ public partial class MainWindow : Window
     {
         _qrExpiryTimer.Stop();
         _pairingQrData = null;
-        _certificate?.Dispose();
         if (_tls is not null) await _tls.DisposeAsync();
         await _discovery.DisposeAsync();
         await _tcp.DisposeAsync();
+        _certificate?.Dispose();
     }
 
     private static IReadOnlyList<string> GetLocalIpv4Addresses()
