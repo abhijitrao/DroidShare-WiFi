@@ -403,6 +403,7 @@ object SecureTlsProbe {
         windowsDeviceId: String,
         shareId: String,
         sources: List<UploadSource>,
+        directories: List<String> = emptyList(),
         onProgress: (Int, Long, Long, Long, Long) -> Unit
     ): List<String> {
         require(shareId.matches(Regex("^[a-fA-F0-9-]{36}$"))) { "Invalid shared folder ID." }
@@ -440,6 +441,14 @@ object SecureTlsProbe {
             PreparedUpload(source.uri, source.relativePath, size,
                 digest.digest().joinToString("") { byte -> "%02x".format(byte) })
         }
+        val safeDirectories = directories.distinct().sortedBy { it.count { ch -> ch == '/' } }
+        safeDirectories.forEach { path ->
+            require(path.isNotBlank() && path.length <= 2048 && !path.startsWith("/") &&
+                path.split('/').none { it.isBlank() || it == "." || it == ".." || it.contains('\\\\') } &&
+                path.split('/').all { it.length <= 240 && it.none { ch -> ch == '\\u0000' || ch == '\\\\' } }) {
+                "Invalid upload directory path."
+            }
+        }
         val totalBytes = prepared.sumOf { it.size }
         var completedBytes = 0L
 
@@ -450,6 +459,19 @@ object SecureTlsProbe {
                 ?: throw IllegalStateException("This shared folder is no longer available.")
             check(selectedShare.optBoolean("canWrite")) {
                 "Windows has not enabled Write permission for this shared folder."
+            }
+
+            safeDirectories.forEach { directory ->
+                writeLine(tls, JSONObject().put("type", "CREATE_DIRECTORY").put("protocolVersion", 1)
+                    .put("shareId", shareId).put("path", directory))
+                val response = JSONObject(readLine(tls.inputStream))
+                if (response.optString("type") == "SESSION_ERROR")
+                    throw IllegalStateException(response.optString("message", "Windows could not create $directory."))
+                check(response.optString("type") == "DIRECTORY_CREATED" &&
+                    response.optInt("protocolVersion") == 1 &&
+                    response.optString("path") == directory) {
+                    "Windows returned an invalid folder-creation response for $directory."
+                }
             }
 
             prepared.mapIndexed { index, file ->
