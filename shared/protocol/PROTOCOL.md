@@ -1,12 +1,12 @@
 # DroidShare-WiFi Local Protocol (v1 draft)
 
 ## Status
-The current implementation supports UDP discovery, certificate-pinned TLS, first-time pairing, authenticated trusted-session re-establishment, Windows shared-folder listing, and nested directory metadata browsing on Android. Android supports clickable breadcrumbs and back navigation. File upload/download and Android trust management are not implemented. No file content read/write/delete/stream operation is exposed.
+The current implementation supports UDP discovery, certificate-pinned TLS, first-time pairing, authenticated trusted-session re-establishment, Windows shared-folder listing, nested directory browsing, and single-file Windows-to-Android download. Android supports clickable breadcrumbs, back navigation, Android's Storage Access Framework destination picker, bounded transfer chunks, live progress/speed, and SHA-256 verification. Android-to-Windows upload, multi-file queue, pause/resume, cancellation UI, and Android trust management are not implemented.
 
 ## Existing diagnostic transport
 - Discovery: IPv4 UDP broadcast on port 45820.
 - Diagnostic TCP session: port 45821 (plaintext; connectivity testing only).
-- TLS session: port 45822 (certificate-pinned pairing, trusted-session authentication, and read-only folder metadata browsing).
+- TLS session: port 45822 (certificate-pinned pairing, trusted-session authentication, folder metadata browsing, and bounded file download).
 - Control messages: UTF-8 JSON, one object per line, maximum 16 KiB.
 - Protocol version: integer 1.
 
@@ -99,9 +99,10 @@ The Android implementation uses an Android Keystore P-256 signing key. Windows s
 - Windows checks the active trusted-device record and exact public key before issuing the challenge, verifies the proof, then re-checks trust before returning `SESSION_READY`.
 - `SESSION_READY` returns only shares with Read permission. It includes opaque share IDs, display names, and permission flags; absolute Windows paths are never sent.
 - Android requests a directory listing with `LIST_DIRECTORY` (`shareId`, relative `path`). Windows re-checks trust and Read permission, resolves the path beneath the configured share root, skips reparse points, and returns up to 500 entry names/types/sizes/timestamps, with the serialized response capped at 12 KiB in `DIRECTORY_LIST`. Android validates the relative path, supports nested folder navigation, and displays clickable root/ancestor breadcrumbs plus back navigation. Each navigation currently establishes a fresh authenticated TLS session.
-- Trust is checked again before each listing request so a revoked device cannot continue browsing on an existing session. Session connections have a 45-second server-side lifetime.
-- This is metadata browsing only. No file contents are transferred, and upload/download/write/delete/stream APIs remain disabled.
-- The Windows path guard remains a lexical and reparse-point defense; before file content operations are enabled, use handle-based/reparse-safe operations to mitigate TOCTOU races.
+- Trust is checked again before each listing and download request so a revoked device cannot start another operation on an existing session. Authenticated connections have a 30-minute server-side upper lifetime.
+- `DOWNLOAD_FILE` accepts an opaque share ID and relative file path. Windows rechecks active trust and the share's Read permission, resolves the path beneath the selected root, rejects directories and reparse points, then emits `FILE_START` (name and size), ordered `FILE_CHUNK` frames (8 KiB binary payload encoded as Base64 JSON), and `FILE_END` (byte count and SHA-256 of the transmitted bytes). The Android client streams chunks directly to a user-selected Storage Access Framework destination and verifies the final byte count and SHA-256 before reporting success. A failed transfer attempts to remove the partial destination.
+- The current implementation downloads one file at a time. It does not yet support upload, multi-file queues, pause/resume, or a dedicated cancel control. Closing the TLS connection interrupts the transfer.
+- The Windows path guard currently combines canonical path containment and reparse-point checks. Before production use, filesystem access should be hardened with handle-based/reparse-safe operations to mitigate TOCTOU races.
 
 ## Compatibility and future transfer protocol
 Any breaking wire-format change requires a protocol version change and updates to both platforms.
