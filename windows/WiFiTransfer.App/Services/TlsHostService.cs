@@ -274,7 +274,7 @@ public sealed class TlsHostService : IAsyncDisposable
             var request = requestDocument.RootElement;
             var requestType = GetString(request, "type");
             if (GetInt(request, "protocolVersion") != 1 ||
-                requestType is not ("LIST_DIRECTORY" or "DOWNLOAD_FILE" or "REVOKE_SELF"))
+                requestType is not ("LIST_DIRECTORY" or "DOWNLOAD_FILE" or "UPLOAD_FILE" or "REVOKE_SELF"))
             {
                 await SendErrorAsync(writer, "Unsupported authenticated session request.");
                 continue;
@@ -381,6 +381,119 @@ public sealed class TlsHostService : IAsyncDisposable
                     // Once raw bytes start, a JSON error would corrupt the fixed-length stream.
                     // Closing the TLS session makes the Android receiver detect an incomplete transfer.
                     if (binaryTransferStarted) return;
+                    await writer.WriteLineAsync(JsonSerializer.Serialize(new
+                    {
+                        type = "SESSION_ERROR",
+                        protocolVersion = 1,
+                        message = ex.Message
+                    }));
+                }
+                continue;
+            }
+
+            if (requestType == "UPLOAD_FILE")
+            {
+                var uploadRelativePath = GetString(request, "path");
+                var uploadSize = request.TryGetProperty("size", out var sizeElement) && sizeElement.TryGetInt64(out var parsedSize)
+                    ? parsedSize : -1;
+                var expectedHash = GetString(request, "sha256");
+                if (string.IsNullOrWhiteSpace(uploadRelativePath) || uploadRelativePath.Length > 2048 ||
+                    uploadSize < 0 || uploadSize > 4L * 1024 * 1024 * 1024 ||
+                    expectedHash is null || !System.Text.RegularExpressions.Regex.IsMatch(expectedHash, "^[a-fA-F0-9]{64}$"))
+                {
+                    await SendErrorAsync(writer, "Upload metadata is invalid.");
+                    continue;
+                }
+
+                string? temporaryPath = null;
+                var rawUploadStarted = false;
+                try
+                {
+                    if (!IsTrustedIdentity(deviceId, publicKeyBytes))
+                        throw new UnauthorizedAccessException("This Android device was revoked.");
+
+                    var destinationPath = _sharedFolders.ResolveAuthorizedPath(shareId, uploadRelativePath, ShareOperation.Write);
+                    var fileName = Path.GetFileName(destinationPath);
+                    if (string.IsNullOrWhiteSpace(fileName) || fileName is "." or ".." ||
+                        !string.Equals(fileName, uploadRelativePath.Split('/', '\\').Last(), StringComparison.Ordinal))
+                        throw new ArgumentException("Upload file name is invalid.");
+                    var parentDirectory = Path.GetDirectoryName(destinationPath)
+                        ?? throw new ArgumentException("Upload destination folder is invalid.");
+                    if (!Directory.Exists(parentDirectory))
+                        throw new DirectoryNotFoundException("The destination folder does not exist.");
+                    if (File.Exists(destinationPath) || Directory.Exists(destinationPath))
+                        throw new IOException("A file or folder with this name already exists.");
+
+                    temporaryPath = Path.Combine(parentDirectory, ".droidshare-" + Guid.NewGuid().ToString("N") + ".upload");
+                    const int uploadBufferSize = 256 * 1024;
+                    await writer.WriteLineAsync(JsonSerializer.Serialize(new
+                    {
+                        type = "UPLOAD_READY",
+                        protocolVersion = 1,
+                        transferMode = "RAW",
+                        chunkSize = uploadBufferSize,
+                        size = uploadSize
+                    }));
+                    await writer.FlushAsync(cancellationToken);
+                    rawUploadStarted = true;
+
+                    using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+                    await using (var destination = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write,
+                        FileShare.None, uploadBufferSize, FileOptions.Asynchronous | FileOptions.WriteThrough))
+                    {
+                        var buffer = new byte[uploadBufferSize];
+                        long received = 0;
+                        while (received < uploadSize)
+                        {
+                            var count = await tls.ReadAsync(buffer.AsMemory(0,
+                                (int)Math.Min(buffer.Length, uploadSize - received)), cancellationToken);
+                            if (count <= 0) throw new IOException("Android closed the connection before upload completed.");
+                            hash.AppendData(buffer, 0, count);
+                            await destination.WriteAsync(buffer.AsMemory(0, count), cancellationToken);
+                            received += count;
+                        }
+                        await destination.FlushAsync(cancellationToken);
+                        destination.Flush(flushToDisk: true);
+                    }
+
+                    var endLine = await ReadLineAsync(reader, cancellationToken);
+                    if (string.IsNullOrWhiteSpace(endLine))
+                        throw new IOException("Upload completion message was not received.");
+                    using var endDocument = JsonDocument.Parse(endLine);
+                    var end = endDocument.RootElement;
+                    var actualHash = Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
+                    var reportedBytes = end.TryGetProperty("bytesSent", out var bytesElement) && bytesElement.TryGetInt64(out var parsedBytes)
+                        ? parsedBytes : -1;
+                    if (GetString(end, "type") != "UPLOAD_END" || GetInt(end, "protocolVersion") != 1 ||
+                        reportedBytes != uploadSize ||
+                        !string.Equals(GetString(end, "sha256"), actualHash, StringComparison.OrdinalIgnoreCase) ||
+                        !string.Equals(actualHash, expectedHash, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidDataException("Upload size or SHA-256 verification failed.");
+
+                    if (!IsTrustedIdentity(deviceId, publicKeyBytes))
+                        throw new UnauthorizedAccessException("This Android device was revoked during upload.");
+                    _ = _sharedFolders.ResolveAuthorizedPath(shareId, uploadRelativePath, ShareOperation.Write);
+                    if (File.Exists(destinationPath) || Directory.Exists(destinationPath))
+                        throw new IOException("A file or folder with this name already exists.");
+                    File.Move(temporaryPath, destinationPath, overwrite: false);
+                    temporaryPath = null;
+                    await writer.WriteLineAsync(JsonSerializer.Serialize(new
+                    {
+                        type = "UPLOAD_COMPLETE",
+                        protocolVersion = 1,
+                        bytesReceived = uploadSize,
+                        sha256 = actualHash,
+                        fileName
+                    }));
+                    await writer.FlushAsync(cancellationToken);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or InvalidDataException or OperationCanceledException)
+                {
+                    if (temporaryPath is not null)
+                    {
+                        try { File.Delete(temporaryPath); } catch (IOException) { }
+                    }
+                    if (rawUploadStarted) return;
                     await writer.WriteLineAsync(JsonSerializer.Serialize(new
                     {
                         type = "SESSION_ERROR",
