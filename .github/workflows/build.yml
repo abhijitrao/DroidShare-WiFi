@@ -15,8 +15,15 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
-      - name: Build
-        run: dotnet build windows/WiFiTransfer.App/WiFiTransfer.App.csproj --configuration Release
+      - name: Publish Windows app (self-contained)
+        run: dotnet publish windows/WiFiTransfer.App/WiFiTransfer.App.csproj --configuration Release --runtime win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true --output artifacts/windows
+      - name: Upload Windows app
+        uses: actions/upload-artifact@v4
+        with:
+          name: DroidShare-Windows-x64
+          path: artifacts/windows/
+          if-no-files-found: error
+          retention-days: 14
 
   android:
     name: Build Android app
@@ -37,3 +44,10 @@ jobs:
           gradle-version: '8.11.1'
       - name: Assemble debug APK
         run: gradle -p android :app:assembleDebug
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: DroidShare-Android-Debug-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
