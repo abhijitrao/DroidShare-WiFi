@@ -270,6 +270,15 @@ object SecureTlsProbe {
         }
     }
 
+    fun forgetSavedWindowsTrust(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val editor = prefs.edit()
+        prefs.all.keys
+            .filter { it.startsWith("trusted_windows_") }
+            .forEach(editor::remove)
+        editor.apply()
+    }
+
     fun disconnectAndForget(context: Context, host: String, port: Int, windowsDeviceId: String) {
         require(windowsDeviceId.matches(Regex("^[a-f0-9]{32}$"))) { "Invalid Windows device identity." }
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
