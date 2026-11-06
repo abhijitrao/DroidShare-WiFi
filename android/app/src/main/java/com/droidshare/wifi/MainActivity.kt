@@ -702,43 +702,52 @@ class MainActivity : ComponentActivity() {
                                     if (connectedEndpoint != null) {
                                         "DroidShare will ask Windows to revoke this Android device, then remove the saved trust on this phone. Automatic reconnect will stop. To connect again, scan the Windows QR and approve pairing on Windows."
                                     } else {
-                                        "The Windows device is not currently connected. Reconnect to the Windows device first so DroidShare can revoke its trust and safely remove the saved pairing from this phone."
+                                        "Windows is currently unreachable. DroidShare will remove the saved pairing from this phone so it will not auto-reconnect. Windows may still list this phone as trusted; if needed, revoke it later from the Windows Trusted Devices screen."
                                     }
                                 )
                             },
                             confirmButton = {
                                 TextButton(
-                                    enabled = !busy && connectedEndpoint != null,
+                                    enabled = !busy,
                                     onClick = {
                                         val endpoint = connectedEndpoint
-                                        if (endpoint != null) {
-                                            scope.launch {
-                                                busy = true
-                                                status = "Revoking this device on Windows…"
-                                                val result = withContext(Dispatchers.IO) {
-                                                    runCatching {
+                                        scope.launch {
+                                            busy = true
+                                            val result = withContext(Dispatchers.IO) {
+                                                runCatching {
+                                                    if (endpoint != null) {
                                                         SecureTlsProbe.disconnectAndForget(
                                                             this@MainActivity,
                                                             endpoint.first,
                                                             endpoint.second,
                                                             endpoint.third
                                                         )
+                                                    } else {
+                                                        SecureTlsProbe.forgetSavedWindowsTrust(this@MainActivity)
                                                     }
                                                 }
-                                                result.onSuccess {
-                                                    connectedEndpoint = null
-                                                    discoveredShares.value = emptyList()
-                                                    scannedQr.value = null
-                                                    scanMessage.value = "Device disconnected. Scan the Windows QR to pair again."
-                                                    tlsStatus = "Windows trust revoked and local pairing forgotten."
-                                                    status = "Windows device disconnected."
-                                                    transferStatus = null
-                                                }.onFailure {
-                                                    status = "Could not disconnect: " + (it.localizedMessage ?: "Connection error")
-                                                }
-                                                busy = false
-                                                showDisconnectDialog = false
                                             }
+                                            result.onSuccess {
+                                                connectedEndpoint = null
+                                                discoveredShares.value = emptyList()
+                                                scannedQr.value = null
+                                                scanMessage.value = "Saved pairing forgotten. Scan the Windows QR to pair again."
+                                                tlsStatus = if (endpoint != null) {
+                                                    "Windows trust revoked and local pairing forgotten."
+                                                } else {
+                                                    "Local pairing forgotten. Windows-side trust was not changed."
+                                                }
+                                                status = if (endpoint != null) {
+                                                    "Windows device disconnected and forgotten."
+                                                } else {
+                                                    "Saved Windows pairing forgotten on this phone."
+                                                }
+                                                transferStatus = null
+                                            }.onFailure {
+                                                status = "Could not disconnect and forget: " + (it.localizedMessage ?: "Connection error")
+                                            }
+                                            busy = false
+                                            showDisconnectDialog = false
                                         }
                                     }
                                 ) { Text("Disconnect & forget", color = androidx.compose.ui.graphics.Color(0xFFB45353)) }
