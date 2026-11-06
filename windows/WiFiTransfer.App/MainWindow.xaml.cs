@@ -39,11 +39,12 @@ public partial class MainWindow : Window
         try
         {
             _certificate = _identityService.GetOrCreateCertificate();
-            _tls = new TlsHostService(_certificate, _pendingPairing, _trustedDevices, ApprovePairingAsync);
+            _tls = new TlsHostService(_certificate, _pendingPairing, _trustedDevices, _sharedFolders, ApprovePairingAsync);
             await _tls.StartAsync();
             _tls.SecureClientConnected += remote =>
                 Dispatcher.Invoke(() => LastEventText.Text = $"Secure pairing completed with {remote}");
             await _tcp.StartAsync();
+            _discovery.WindowsDeviceId = WindowsIdentityService.GetSha256Fingerprint(_certificate)[..32];
             await _discovery.StartAsync();
             _tcp.ClientConnected += remote =>
                 Dispatcher.Invoke(() => LastEventText.Text = $"Android diagnostic handshake from {remote}");
@@ -124,8 +125,8 @@ public partial class MainWindow : Window
 
         PairingQrImage.Source = bitmap;
         PairingStatusText.Text =
-            $"TLS diagnostic endpoint · {Environment.MachineName} · {hostAddress}:{TlsHostService.Port}. " +
-            "Scan to pair with explicit Windows approval; file access remains disabled.";
+            $"Secure pairing endpoint · {Environment.MachineName} · {hostAddress}:{TlsHostService.Port}. " +
+            "Scan to pair with explicit Windows approval; trusted devices can browse explicitly shared folders.";
         UpdateQrExpiryText();
         _qrExpiryTimer.Start();
     }
