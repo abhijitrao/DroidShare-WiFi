@@ -418,49 +418,7 @@ object SecureTlsProbe {
         val relativePath = if (targetFolder.isBlank()) fileName else targetFolder + "/" + fileName
         require(relativePath.length <= 2048) { "Upload path is too long." }
 
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val fingerprint = prefs.getString("trusted_windows_" + windowsDeviceId, null)
-            ?: throw IllegalStateException("This Windows device is not paired.")
-        require(fingerprint.matches(Regex("^[a-f0-9]{64}$")) && fingerprint.take(32) == windowsDeviceId) {
-            "Saved Windows trust information is invalid."
-        }
-        val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        check(keyStore.containsAlias(KEY_ALIAS)) { "Android identity key is missing. Pair this device again." }
-        val publicKey = keyStore.getCertificate(KEY_ALIAS).publicKey
-        val privateKey = keyStore.getKey(KEY_ALIAS, null) as java.security.PrivateKey
-        val androidDeviceId = prefs.getString("android_device_id", null)
-            ?: throw IllegalStateException("Android device identity is missing.")
-
-        val tlsContext = SSLContext.getInstance("TLS")
-        tlsContext.init(null, arrayOf(pinnedTrustManager(fingerprint)), SecureRandom())
-        val socket = tlsContext.socketFactory.createSocket() as SSLSocket
-        socket.use { tls ->
-            tls.connect(InetSocketAddress(host, port), 5000)
-            tls.tcpNoDelay = true
-            tls.soTimeout = 120000
-            tls.enabledProtocols = tls.supportedProtocols.filter { it == "TLSv1.3" || it == "TLSv1.2" }.toTypedArray()
-            check(tls.enabledProtocols.isNotEmpty()) { "TLS 1.2 or newer is required." }
-            tls.startHandshake()
-            writeLine(tls, JSONObject().put("type", "SESSION_HELLO").put("protocolVersion", 1)
-                .put("androidDeviceId", androidDeviceId)
-                .put("publicKey", android.util.Base64.encodeToString(publicKey.encoded, android.util.Base64.NO_WRAP)))
-            val challengeResponse = JSONObject(readLine(tls.inputStream))
-            check(challengeResponse.optString("type") == "SESSION_CHALLENGE" &&
-                challengeResponse.optInt("protocolVersion") == 1) {
-                challengeResponse.optString("message", "Windows rejected the secure session.")
-            }
-            val challenge = android.util.Base64.decode(challengeResponse.getString("challenge"), android.util.Base64.DEFAULT)
-            require(challenge.size == 32) { "Windows session challenge is malformed." }
-            val signer = Signature.getInstance("SHA256withECDSA")
-            signer.initSign(privateKey)
-            signer.update(challenge)
-            writeLine(tls, JSONObject().put("type", "SESSION_PROOF").put("protocolVersion", 1)
-                .put("signature", android.util.Base64.encodeToString(signer.sign(), android.util.Base64.NO_WRAP)))
-            val ready = JSONObject(readLine(tls.inputStream))
-            check(ready.optString("type") == "SESSION_READY" && ready.optInt("protocolVersion") == 1 &&
-                ready.optString("windowsDeviceId") == windowsDeviceId) {
-                ready.optString("message", "Windows identity did not match the saved trust record.")
-            }
+        withTrustedSession(context, host, port, windowsDeviceId) { tls, ready ->
             val shares = ready.optJSONArray("shares") ?: org.json.JSONArray()
             val selectedShare = (0 until shares.length()).map { shares.getJSONObject(it) }
                 .firstOrNull { it.optString("shareId") == shareId }
