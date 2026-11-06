@@ -395,8 +395,8 @@ public sealed class TlsHostService : IAsyncDisposable
             {
                 var directoryRelativePath = GetString(request, "path");
                 if (string.IsNullOrWhiteSpace(directoryRelativePath) || directoryRelativePath.Length > 2048 ||
-                    directoryRelativePath.StartsWith('/') || directoryRelativePath.StartsWith('\\\\') ||
-                    directoryRelativePath.Split('/', '\\\\').Any(segment =>
+                    directoryRelativePath.StartsWith('/') || directoryRelativePath.StartsWith('\\') ||
+                    directoryRelativePath.Split('/', '\\').Any(segment =>
                         string.IsNullOrWhiteSpace(segment) || segment is "." or ".."))
                 {
                     await SendErrorAsync(writer, "Folder path is invalid.");
