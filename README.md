@@ -19,4 +19,4 @@ Fast, secure local file sharing between Android and Windows over Wi-Fi.
 See [AGENTS.md](AGENTS.md) for repository engineering instructions and [PROJECT_PLAN.md](PROJECT_PLAN.md) for the complete roadmap and acceptance criteria.
 
 ## Status
-Documentation foundation. Phase 1 connection implementation is next; do not treat planned capabilities as implemented until their tests pass.
+Phase 1 starter implementation is in place: Windows UDP discovery/TCP diagnostic host and Android discovery/TCP diagnostic client. Build and physical-device tests are pending. File transfer, QR pairing, TLS, resume, DLNA, and remote folder access are not implemented yet.
