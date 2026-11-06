@@ -34,7 +34,7 @@ class MainActivity : ComponentActivity() {
         } else {
             try {
                 scannedQr.value = PairingQrPayload.parse(contents)
-                scanMessage.value = "QR payload validated. Secure pairing is not enabled yet."
+                scanMessage.value = "QR payload validated. Connect to verify the Windows certificate."
             } catch (error: Exception) {
                 scannedQr.value = null
                 scanMessage.value = error.message ?: "Invalid pairing QR code."
@@ -48,12 +48,13 @@ class MainActivity : ComponentActivity() {
             MaterialTheme {
                 var status by remember { mutableStateOf("Ready to discover a Windows device") }
                 var busy by remember { mutableStateOf(false) }
+                var tlsStatus by remember { mutableStateOf("TLS connection has not been tested.") }
                 val scope = rememberCoroutineScope()
                 Surface(modifier = Modifier.fillMaxSize()) {
                     Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
                         Text("DroidShare-WiFi", style = MaterialTheme.typography.headlineMedium)
                         Spacer(Modifier.height(8.dp))
-                        Text("Phase 1 · Local connection test")
+                        Text("Phase 1 · Local and secure connection test")
                         Spacer(Modifier.height(20.dp))
                         Text(status, style = MaterialTheme.typography.bodyLarge)
                         Spacer(Modifier.height(16.dp))
@@ -101,10 +102,30 @@ class MainActivity : ComponentActivity() {
                                         style = MaterialTheme.typography.bodySmall
                                     )
                                     Text(
-                                        "Preview only — no network connection or trust is created.",
+                                        "TLS probe verifies the exact certificate fingerprint. It does not pair devices or grant file access.",
                                         color = MaterialTheme.colorScheme.error,
                                         style = MaterialTheme.typography.bodySmall
                                     )
+                                    Spacer(Modifier.height(10.dp))
+                                    Button(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        enabled = !busy && pairing.expiresAt.isAfter(java.time.Instant.now()),
+                                        onClick = {
+                                            scope.launch {
+                                                busy = true
+                                                tlsStatus = "Connecting and validating Windows certificate…"
+                                                tlsStatus = withContext(Dispatchers.IO) {
+                                                    try {
+                                                        SecureTlsProbe.connect(pairing)
+                                                    } catch (error: Exception) {
+                                                        "TLS connection failed: " + (error.localizedMessage ?: error.javaClass.simpleName)
+                                                    }
+                                                }
+                                                busy = false
+                                            }
+                                        }
+                                    ) { Text(if (busy) "Connecting…" else "Connect securely") }
+                                    Text(tlsStatus, style = MaterialTheme.typography.bodySmall)
                                 }
                             }
                         }
@@ -112,7 +133,7 @@ class MainActivity : ComponentActivity() {
                         Spacer(Modifier.height(20.dp))
                         Text(
                             "Both devices must be connected to a network that allows local device communication. " +
-                                "This diagnostic build does not transfer files.",
+                                "The TLS test verifies the scanned Windows certificate. Device pairing and file transfer are not enabled.",
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
