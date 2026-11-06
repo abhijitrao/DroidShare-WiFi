@@ -92,6 +92,9 @@ The Android implementation uses an Android Keystore P-256 signing key. Windows s
 - Windows supports explicit trusted-device revocation. Revocation blocks future authenticated sessions.
 - Re-pairing is explicit; never silently replace an existing trusted identity.
 
+## Shared-folder configuration status
+Windows now has a local-only shared-folder manager. It persists selected roots and Read/Write/Delete/Stream permissions; new shares default to Read + Stream. This does not add a wire message or expose a remote folder API. Android cannot browse these shares yet, and no filesystem operation is available over the network. The Windows path guard is a preparation primitive only; each future file operation must independently authenticate the session, check revocation and per-share permission, and revalidate the path.
+
 ## Compatibility and future transfer protocol
 Any breaking wire-format change requires a protocol version change and updates to both platforms.
 
