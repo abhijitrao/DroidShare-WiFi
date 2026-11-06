@@ -83,17 +83,21 @@ See docs/ARCHITECTURE.md, docs/SECURITY.md, and shared/protocol/PROTOCOL.md.
 - [x] Windows trusted-device listing and revocation.
 - [x] Recovery when the Windows trust record exists but Android missed the final response.
 - [ ] Physical-device tests on router and supported hotspot topology.
-**Exit:** authenticated local session without manual IP/port entry. No file API before exit.
+**Exit:** authenticated local session without manual IP/port entry. Physical interoperability remains to be verified.
 
 ### Phase 2 — Bidirectional file transfer
 - [x] Windows shared-folder configuration UI with explicit folder selection.
 - [x] Persist per-share Read, Write, Delete, Stream permissions; defaults are Read + Stream only.
 - [x] Add/remove shares without deleting user files; duplicate roots are rejected.
 - [x] Add a path authorization/containment guard that rejects rooted paths, traversal, and existing reparse points in the share path and its ancestors.
-- [ ] Establish authenticated reconnect sessions for already paired devices and enforce trust/revocation on every session.
-- [ ] Android shared-folder browser and Windows share-list API over authenticated TLS.
+- [x] Establish authenticated reconnect sessions for already paired devices using a fresh Android Keystore challenge proof.
+- [x] Enforce active trust/revocation checks at session establishment and before every folder listing request.
+- [x] Add Windows share-list API over authenticated TLS; expose only shares with Read permission and never send absolute paths.
+- [x] Add bounded root-directory metadata listing over authenticated TLS; skip reparse points and cap responses.
+- [x] Android displays trusted Windows shared folders, permissions, and root entry metadata.
+- [ ] Add nested folder navigation and breadcrumb/back navigation.
 - [ ] Single/multiple file streaming both directions; queue, progress, speed, cancellation.
-**Exit:** repeatable transfers with bounded memory. Folder configuration is local-only until the authenticated share API is implemented; no remote file access is enabled yet.
+**Exit:** repeatable transfers with bounded memory. Remote folder metadata browsing is implemented for trusted devices. No file contents are transferred; upload/download/write/delete/stream APIs remain disabled.
 
 ### Phase 3 — Folder transfer
 - Recursive manifest, directory creation, conflict policy, path validation.
@@ -133,7 +137,7 @@ See docs/ARCHITECTURE.md, docs/SECURITY.md, and shared/protocol/PROTOCOL.md.
 - Disconnect and revoke controls.
 
 ## 7. Current status
-Phase 1 provides Windows UDP discovery, a plaintext TCP diagnostic on port 45821, and TLS pairing on port 45822. Android scans the QR, pins the Windows certificate, submits its Android Keystore P-256 public key, and signs a fresh challenge after explicit Windows approval. Windows validates and consumes the one-time QR nonce, persists the Android public key, and provides a UI to revoke paired devices. Android persists the Windows certificate pin after final approval. Physical-device interoperability, Android-side trust management and file transfer remain pending. No file transfer is enabled.
+Phase 1 implements UDP discovery, TLS QR pairing, Android Keystore P-256 identity proof, Windows trusted-device management/revocation, and authenticated reconnect sessions. Discovery advertises the Windows device ID and TLS endpoint as untrusted hints; Android verifies the saved certificate pin and proves its identity with a fresh challenge for each session. Phase 2 now includes Windows shared-folder selection and per-share permissions, plus an authenticated TLS share-list and root-directory metadata browser on Android. Windows re-checks revocation and Read permission before each listing, never sends absolute paths, skips reparse points, and bounds listing responses. The Android UI presents the shared folders and root entries. Physical-device interoperability testing is still pending. File contents are not transferred yet; upload, download, write, delete, streaming, and nested-folder navigation remain future work.
 
 ## 8. Decision log
 - Prefer 5 GHz for primary performance tests; do not require it.
