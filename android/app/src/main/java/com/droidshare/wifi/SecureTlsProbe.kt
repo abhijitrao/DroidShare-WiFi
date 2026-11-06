@@ -153,7 +153,7 @@ object SecureTlsProbe {
                 .putString("trusted_windows_name_" + pairing.deviceId, pairing.deviceName)
                 .apply()
             return "Paired with " + pairing.deviceName + " · TLS " + tls.session.protocol +
-                " · Android key proof verified. File sharing is not enabled yet."
+                " · Android key proof verified. Secure browsing and file downloads are ready."
         }
     }
 
