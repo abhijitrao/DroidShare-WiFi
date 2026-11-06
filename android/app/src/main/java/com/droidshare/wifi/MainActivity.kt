@@ -545,7 +545,7 @@ class MainActivity : ComponentActivity() {
         // Retry discovery and the authenticated session sequentially; never weaken trust checks.
         val retryDelaysMs = longArrayOf(0L, 1000L, 2000L, 3000L)
         var lastResult = DiscoveryResult("No previously paired Windows device found.")
-        for ((attempt, delayMs) in retryDelaysMs.withIndex()) {
+        for (delayMs in retryDelaysMs) {
             if (delayMs > 0) Thread.sleep(delayMs)
             lastResult = discoverAndHandshakeOnce(autoReconnectOnly = true)
             if (lastResult.host != null) return lastResult
