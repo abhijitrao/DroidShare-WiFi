@@ -16,7 +16,7 @@
             </Grid.RowDefinitions>
             <StackPanel>
                 <TextBlock Text="DroidShare-WiFi" FontSize="28" FontWeight="SemiBold"/>
-                <TextBlock Text="Local connection and pairing foundation" Foreground="#9CA3AF" Margin="0,6,0,0"/>
+                <TextBlock Text="Private file sharing · Local network" Foreground="#9CA3AF" Margin="0,6,0,0"/>
             </StackPanel>
             <Border Grid.Row="2" Background="#1F2937" CornerRadius="10" Padding="16">
                 <StackPanel>
@@ -46,6 +46,9 @@
                         <Button Content="Manage paired devices"
                                 Padding="14,8" Margin="0,14,0,0" HorizontalAlignment="Left"
                                 Click="ManageDevicesButton_Click"/>
+                        <Button Content="Manage shared folders"
+                                Padding="14,8" Margin="0,8,0,0" HorizontalAlignment="Left"
+                                Click="ManageSharedFoldersButton_Click"/>
                     </StackPanel>
                     <Border Grid.Column="1" Background="White" CornerRadius="8" Padding="10"
                             VerticalAlignment="Center">
@@ -56,12 +59,12 @@
             </Border>
             <Border Grid.Row="5" Background="#1F2937" CornerRadius="10" Padding="16" Margin="0,16,0,0">
                 <StackPanel>
-                    <TextBlock Text="Phase 1 diagnostic mode" FontWeight="SemiBold"/>
-                    <TextBlock Text="Scan the QR on Android and tap Connect securely. Windows will ask you to approve the Android identity. The QR nonce is single-use; file access and transfer remain disabled."
+                    <TextBlock Text="Secure connection status" FontWeight="SemiBold"/>
+                    <TextBlock Text="Scan the QR on Android and tap Connect securely. Windows will ask you to approve the Android identity. Pair trusted Android devices and choose exactly which folders they may access. File transfer is being built next."
                                TextWrapping="Wrap" Foreground="#D1D5DB" Margin="0,8,0,0"/>
                     <TextBlock x:Name="LastEventText" Text="No Android device connected yet."
                                Foreground="#9CA3AF" Margin="0,14,0,0"/>
-                    <TextBlock Text="UDP discovery :45820   •   TCP diagnostic :45821   •   TLS diagnostic :45822"
+                    <TextBlock Text="Local discovery :45820   •   Secure pairing :45822"
                                Foreground="#6B7280" Margin="0,14,0,0"/>
                 </StackPanel>
             </Border>
