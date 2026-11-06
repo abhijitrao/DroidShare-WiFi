@@ -14,6 +14,8 @@ public sealed record PairingQrData(
 
 public sealed class PairingQrService
 {
+    private readonly PendingPairingRegistry _pendingPairing;
+    public PairingQrService(PendingPairingRegistry pendingPairing) => _pendingPairing = pendingPairing;
     public const int PairingWindowSeconds = 120;
 
     public PairingQrData Create(
@@ -39,6 +41,8 @@ public sealed class PairingQrService
             .Replace('/', '_');
         var fingerprint = WindowsIdentityService.GetSha256Fingerprint(certificate);
         var deviceId = fingerprint[..32];
+
+        _pendingPairing.Register(nonce, expiresAt);
 
         var payload = JsonSerializer.Serialize(new
         {
