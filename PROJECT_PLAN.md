@@ -72,16 +72,18 @@ See docs/ARCHITECTURE.md, docs/SECURITY.md, and shared/protocol/PROTOCOL.md.
 - [x] Android TCP client and status UI.
 - [x] HELLO/WELCOME and PING/PONG diagnostic.
 - [x] Automatic local-network UDP discovery.
-- [ ] Windows QR display and one-time pairing window.
+- [x] Windows stable TLS certificate creation/loading in CurrentUser certificate store.
+- [x] Windows QR payload generation and QR preview UI with 120-second expiry.
 - [ ] Android QR scanning and payload validation.
-- [ ] TLS certificate identity and Android fingerprint pinning.
-- [ ] One-time pairing nonce, explicit approval, and proof of possession.
+- [ ] TLS listener and Android certificate fingerprint pinning.
+- [ ] Server-side one-time nonce validation/consumption.
+- [ ] Explicit pairing approval and proof of possession.
 - [ ] Trust storage and device revocation.
 - [ ] Physical-device tests on router and supported hotspot topology.
 **Exit:** authenticated local session without manual IP/port entry. No file API before exit.
 
 ### Phase 2 — Bidirectional file transfer
-- Stream single/multiple files both directions; queue, progress, speed, cancellation.
+- Single/multiple file streaming both directions; queue, progress, speed, cancellation.
 **Exit:** repeatable transfers with bounded memory.
 
 ### Phase 3 — Folder transfer
@@ -122,7 +124,7 @@ See docs/ARCHITECTURE.md, docs/SECURITY.md, and shared/protocol/PROTOCOL.md.
 - Disconnect and revoke controls.
 
 ## 7. Current status
-Phase 1 currently provides diagnostic-only Windows UDP discovery/TCP host and Android UDP discovery/TCP client, HELLO/WELCOME, and PING/PONG. CI build jobs are configured. QR, TLS, authenticated trust, file transfer, physical-device interoperability, DLNA, and remote folder access are not implemented. The current TCP diagnostic is plaintext and unauthenticated.
+Phase 1 currently provides Windows UDP discovery/TCP diagnostic host, Android UDP discovery/TCP diagnostic client, HELLO/WELCOME, and PING/PONG. Windows now creates/loads a stable self-signed TLS certificate in the current user's certificate store and displays a QR payload preview containing a 120-second nonce and endpoint hint. The preview is not an active pairing flow: Android scanning, TLS listener/pinning, nonce validation, authenticated approval/proof, trust/revocation, and physical-device interoperability remain pending. The diagnostic TCP channel is plaintext and unauthenticated. No file transfer is enabled.
 
 ## 8. Decision log
 - Prefer 5 GHz for primary performance tests; do not require it.
