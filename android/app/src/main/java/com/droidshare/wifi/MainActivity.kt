@@ -346,19 +346,6 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                        Spacer(Modifier.height(22.dp))
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color(0xFFECEBFA))
-                        ) {
-                            Column(Modifier.padding(16.dp)) {
-                                Text("Coming next", color = violet, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                                Spacer(Modifier.height(4.dp))
-                                Text("Your paired Windows folders are now available here. Secure file upload and download are the next milestone.",
-                                    color = ink, style = MaterialTheme.typography.bodySmall)
-                            }
-                        }
                         Spacer(Modifier.height(18.dp))
                         Text("Both devices must allow local device communication. QR pairing does not bypass Wi-Fi client isolation or firewall rules.",
                             style = MaterialTheme.typography.bodySmall, color = muted)
