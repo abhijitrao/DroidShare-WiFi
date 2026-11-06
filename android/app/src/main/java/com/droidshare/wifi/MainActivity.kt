@@ -306,6 +306,9 @@ class MainActivity : ComponentActivity() {
                                                         "Connection failed: " + (error.localizedMessage ?: error.javaClass.simpleName)
                                                     }
                                                 }
+                                                if (tlsStatus.startsWith("Paired")) {
+                                                    connectedEndpoint = Triple(pairing.host, pairing.port, pairing.deviceId)
+                                                }
                                                 busy = false
                                             }
                                         }
