@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -30,7 +31,7 @@ import java.nio.charset.StandardCharsets
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-data class DiscoveryResult(val message: String, val shares: List<RemoteShare> = emptyList())
+data class DiscoveryResult(val message: String, val shares: List<RemoteShare> = emptyList(), val host: String? = null, val tlsPort: Int = 0, val windowsDeviceId: String = "")
 
 class MainActivity : ComponentActivity() {
     private val discoveredShares = mutableStateOf<List<RemoteShare>>(emptyList())
@@ -62,6 +63,7 @@ class MainActivity : ComponentActivity() {
             var status by remember { mutableStateOf("Ready to discover a Windows device") }
             var busy by remember { mutableStateOf(false) }
             var tlsStatus by remember { mutableStateOf("Pairing has not been attempted.") }
+            var connectedEndpoint by remember { mutableStateOf<Triple<String, Int, String>?>(null) }
             val scope = rememberCoroutineScope()
 
             MaterialTheme(
@@ -140,6 +142,7 @@ class MainActivity : ComponentActivity() {
                                             val result = withContext(Dispatchers.IO) { discoverAndHandshake() }
                                             status = result.message
                                             discoveredShares.value = result.shares
+                                            connectedEndpoint = if (result.host != null && result.tlsPort in 1..65535 && result.windowsDeviceId.isNotBlank()) Triple(result.host, result.tlsPort, result.windowsDeviceId) else null
                                             busy = false
                                         }
                                     }
@@ -266,27 +269,75 @@ class MainActivity : ComponentActivity() {
                                             if (share.canDelete) PermissionTag("DELETE", androidx.compose.ui.graphics.Color(0xFFB45353))
                                             if (share.canStream) PermissionTag("STREAM", green)
                                         }
+                                        if (share.currentPath.isNotEmpty()) {
+                                            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                                                TextButton(
+                                                    enabled = !busy && connectedEndpoint != null,
+                                                    onClick = {
+                                                        val parent = share.currentPath.substringBeforeLast('/', "")
+                                                        val endpoint = connectedEndpoint
+                                                        if (endpoint != null) scope.launch {
+                                                            busy = true
+                                                            status = "Opening parent folder…"
+                                                            val result = withContext(Dispatchers.IO) {
+                                                                runCatching { SecureTlsProbe.connectTrusted(this@MainActivity, endpoint.first, endpoint.second, endpoint.third, share.shareId, parent) }
+                                                            }
+                                                            result.onSuccess { browsed ->
+                                                                discoveredShares.value = discoveredShares.value.map { if (it.shareId == share.shareId) browsed.firstOrNull { item -> item.shareId == share.shareId } ?: it else it }
+                                                                status = "Folder loaded."
+                                                            }.onFailure { status = "Could not open folder: " + (it.localizedMessage ?: "Connection error") }
+                                                            busy = false
+                                                        }
+                                                    }
+                                                ) { Text("← Back") }
+                                                Spacer(Modifier.width(4.dp))
+                                                Text(if (share.currentPath.isBlank()) share.name else share.currentPath.replace('/', '›'),
+                                                    color = muted, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                                            }
+                                        } else {
+                                            Text("Shared folder", color = muted, style = MaterialTheme.typography.labelSmall)
+                                        }
                                         if (share.entries.isEmpty()) {
                                             Text("This folder is empty.", color = muted,
                                                 style = MaterialTheme.typography.bodySmall,
                                                 modifier = Modifier.padding(top = 12.dp))
                                         } else {
-                                            Spacer(Modifier.height(12.dp))
-                                            share.entries.take(12).forEach { entry ->
+                                            Spacer(Modifier.height(8.dp))
+                                            share.entries.forEach { entry ->
                                                 Row(
-                                                    modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                                                    modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp)
+                                                        .then(if (entry.isDirectory) Modifier.clickable(enabled = !busy && connectedEndpoint != null) {
+                                                            val endpoint = connectedEndpoint
+                                                            if (endpoint != null) {
+                                                                val childPath = if (share.currentPath.isBlank()) entry.name else share.currentPath + "/" + entry.name
+                                                                scope.launch {
+                                                                    busy = true
+                                                                    status = "Opening ${entry.name}…"
+                                                                    val result = withContext(Dispatchers.IO) {
+                                                                        runCatching { SecureTlsProbe.connectTrusted(this@MainActivity, endpoint.first, endpoint.second, endpoint.third, share.shareId, childPath) }
+                                                                    }
+                                                                    result.onSuccess { browsed ->
+                                                                        discoveredShares.value = discoveredShares.value.map { if (it.shareId == share.shareId) browsed.firstOrNull { item -> item.shareId == share.shareId } ?: it else it }
+                                                                        status = "Folder loaded."
+                                                                    }.onFailure { status = "Could not open folder: " + (it.localizedMessage ?: "Connection error") }
+                                                                    busy = false
+                                                                }
+                                                            }
+                                                        } else Modifier),
                                                     verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
                                                 ) {
                                                     Text(if (entry.isDirectory) "📁" else "📄")
                                                     Spacer(Modifier.width(9.dp))
                                                     Text(entry.name, color = ink, style = MaterialTheme.typography.bodySmall,
                                                         modifier = Modifier.weight(1f), maxLines = 1)
-                                                    if (!entry.isDirectory) Text(formatFileSize(entry.size), color = muted,
+                                                    if (entry.isDirectory) Text("OPEN  ›", color = violet,
+                                                        style = MaterialTheme.typography.labelSmall)
+                                                    else Text(formatFileSize(entry.size), color = muted,
                                                         style = MaterialTheme.typography.labelSmall)
                                                 }
                                             }
-                                            if (share.entries.size > 12 || share.truncated)
-                                                Text("Showing the first 12 items from the shared folder root.",
+                                            if (share.truncated)
+                                                Text("This folder contains more items. The list is limited for safety.",
                                                     color = muted, style = MaterialTheme.typography.labelSmall,
                                                     modifier = Modifier.padding(top = 6.dp))
                                         }
@@ -347,7 +398,10 @@ class MainActivity : ComponentActivity() {
                         )
                         return DiscoveryResult(
                             "Securely connected to ${device.optString("deviceName")} · ${shares.size} shared folder(s) found.",
-                            shares
+                            shares,
+                            response.address.hostAddress,
+                            tlsPort,
+                            windowsDeviceId
                         )
                     }
                 }
