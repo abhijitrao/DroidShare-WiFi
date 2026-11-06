@@ -788,9 +788,16 @@ class MainActivity : ComponentActivity() {
         return try {
             val connectivity = getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
                 as android.net.ConnectivityManager
-            val wifiNetwork = connectivity.allNetworks.firstOrNull { network ->
+            val activeNetwork = connectivity.activeNetwork
+            val wifiNetwork = activeNetwork?.takeIf { network ->
                 connectivity.getNetworkCapabilities(network)
                     ?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true
+            } ?: connectivity.allNetworks.firstOrNull { network ->
+                connectivity.getNetworkCapabilities(network)
+                    ?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true &&
+                    connectivity.getLinkProperties(network)?.linkAddresses?.any {
+                        it.address is java.net.Inet4Address
+                    } == true
             } ?: throw IllegalStateException("No active Wi-Fi network found. Connect the phone to the same Wi-Fi as Windows.")
 
             val wifiLink = connectivity.getLinkProperties(wifiNetwork)
