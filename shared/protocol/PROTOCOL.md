@@ -19,7 +19,7 @@ Windows replies by unicast with JSON containing type DROIDSHARE_DEVICE, protocol
 ### Diagnostic handshake
 Android sends HELLO and Windows returns WELCOME. Android then sends PING and Windows returns PONG. This exchange is plaintext and unauthenticated. The measured round-trip time is a connectivity diagnostic, not a throughput benchmark. The server applies a five-second idle timeout.
 
-## Secure pairing design (implementation pending)
+## Secure pairing design (partially scaffolded; no active pairing yet)
 
 ### Roles and trust model
 - Windows is the pairing host and displays a QR code.
