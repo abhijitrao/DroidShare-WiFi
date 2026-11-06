@@ -91,7 +91,7 @@ See docs/ARCHITECTURE.md, docs/SECURITY.md, and shared/protocol/PROTOCOL.md.
 - [x] Add/remove shares without deleting user files; duplicate roots are rejected.
 - [x] Add a path authorization/containment guard that rejects rooted paths, traversal, and existing reparse points in the share path and its ancestors.
 - [x] Establish authenticated reconnect sessions for already paired devices using a fresh Android Keystore challenge proof.
-- [x] Automatically discover and reconnect to a previously paired Windows device when Android app launches.
+- [x] Automatically discover and reconnect to a previously paired Windows device when Android app launches. Startup reconnect retries discovery/authentication up to four times with bounded backoff to allow Wi-Fi readiness.
 - [x] Enforce active trust/revocation checks at session establishment and before every folder listing request.
 - [x] Add Windows share-list API over authenticated TLS; expose only shares with Read permission and never send absolute paths.
 - [x] Add bounded root-directory metadata listing over authenticated TLS; skip reparse points and cap responses.
