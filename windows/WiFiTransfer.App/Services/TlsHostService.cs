@@ -68,7 +68,7 @@ public sealed class TlsHostService : IAsyncDisposable
             try
             {
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                timeout.CancelAfter(TimeSpan.FromSeconds(45));
+                timeout.CancelAfter(TimeSpan.FromMinutes(30));
                 await tls.AuthenticateAsServerAsync(new System.Net.Security.SslServerAuthenticationOptions
                 {
                     ServerCertificate = _certificate,
@@ -271,8 +271,9 @@ public sealed class TlsHostService : IAsyncDisposable
             if (string.IsNullOrWhiteSpace(line)) return;
             using var requestDocument = JsonDocument.Parse(line);
             var request = requestDocument.RootElement;
+            var requestType = GetString(request, "type");
             if (GetInt(request, "protocolVersion") != 1 ||
-                GetString(request, "type") != "LIST_DIRECTORY")
+                requestType is not ("LIST_DIRECTORY" or "DOWNLOAD_FILE"))
             {
                 await SendErrorAsync(writer, "Unsupported authenticated session request.");
                 continue;
@@ -287,6 +288,79 @@ public sealed class TlsHostService : IAsyncDisposable
             if (!Guid.TryParse(GetString(request, "shareId"), out var shareId))
             {
                 await SendErrorAsync(writer, "Shared folder ID is invalid.");
+                continue;
+            }
+
+            if (requestType == "DOWNLOAD_FILE")
+            {
+                var fileRelativePath = GetString(request, "path");
+                if (string.IsNullOrWhiteSpace(fileRelativePath) || fileRelativePath.Length > 2048)
+                {
+                    await SendErrorAsync(writer, "File path is invalid.");
+                    continue;
+                }
+
+                try
+                {
+                    if (!IsTrustedIdentity(deviceId, publicKeyBytes))
+                    {
+                        await SendErrorAsync(writer, "This Android device was revoked.");
+                        return;
+                    }
+
+                    var filePath = _sharedFolders.ResolveAuthorizedPath(shareId, fileRelativePath, ShareOperation.Read);
+                    var attributes = File.GetAttributes(filePath);
+                    if ((attributes & FileAttributes.Directory) != 0 ||
+                        (attributes & FileAttributes.ReparsePoint) != 0 ||
+                        !File.Exists(filePath))
+                        throw new UnauthorizedAccessException("The requested item is not a regular shared file.");
+
+                    await using var file = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read,
+                        bufferSize: 64 * 1024, useAsync: true);
+                    await writer.WriteLineAsync(JsonSerializer.Serialize(new
+                    {
+                        type = "FILE_START",
+                        protocolVersion = 1,
+                        fileName = Path.GetFileName(filePath),
+                        size = file.Length
+                    }));
+
+                    using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+                    var buffer = new byte[8 * 1024];
+                    long sent = 0;
+                    while (true)
+                    {
+                        var read = await file.ReadAsync(buffer.AsMemory(), cancellationToken);
+                        if (read == 0) break;
+                        hash.AppendData(buffer, 0, read);
+                        var chunk = JsonSerializer.Serialize(new
+                        {
+                            type = "FILE_CHUNK",
+                            protocolVersion = 1,
+                            sequence = sent / buffer.Length,
+                            data = Convert.ToBase64String(buffer, 0, read)
+                        });
+                        await writer.WriteLineAsync(chunk);
+                        sent += read;
+                    }
+
+                    await writer.WriteLineAsync(JsonSerializer.Serialize(new
+                    {
+                        type = "FILE_END",
+                        protocolVersion = 1,
+                        bytesSent = sent,
+                        sha256 = Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant()
+                    }));
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+                {
+                    await writer.WriteLineAsync(JsonSerializer.Serialize(new
+                    {
+                        type = "SESSION_ERROR",
+                        protocolVersion = 1,
+                        message = ex.Message
+                    }));
+                }
                 continue;
             }
 
