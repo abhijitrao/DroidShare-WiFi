@@ -53,7 +53,7 @@ object SecureTlsProbe {
             generator.initialize(
                 KeyGenParameterSpec.Builder(
                     KEY_ALIAS,
-                    KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY
+                    KeyProperties.PURPOSE_SIGN
                 )
                     .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
                     .setDigests(KeyProperties.DIGEST_SHA256)
