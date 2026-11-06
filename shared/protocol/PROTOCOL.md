@@ -6,7 +6,7 @@ The current implementation supports plaintext discovery/diagnostics, certificate
 ## Existing diagnostic transport
 - Discovery: IPv4 UDP broadcast on port 45820.
 - Diagnostic TCP session: port 45821 (plaintext; connectivity testing only).
-- TLS diagnostic session: port 45822 (certificate pinning; no pairing or file access).
+- TLS pairing session: port 45822 (certificate pinning and first-time device pairing; no file access).
 - Control messages: UTF-8 JSON, one object per line, maximum 16 KiB.
 - Protocol version: integer 1.
 
@@ -82,7 +82,7 @@ After scanning, Android validates the QR schema and expiry, connects using TLS, 
 6. Android stores the Windows device ID and pinned certificate fingerprint only after receiving the final successful pairing response.
 7. Both sides show an explicit paired state. Failed, rejected, expired, or interrupted flows leave no trusted-device record.
 
-The initial Android implementation uses an Android Keystore P-256 signing key. Windows stores the public key and metadata in a LocalAppData JSON file. A trusted-device management/revocation UI and recovery flow are still required. Never log QR contents, nonce values, private keys, or proof payloads.
+The Android implementation uses an Android Keystore P-256 signing key. Windows stores the public key and metadata in a LocalAppData JSON file and provides a paired-device manager with explicit revocation. Android stores the Windows device ID and certificate pin in app-private preferences. Android-side trusted-device management and lost-final-response recovery are still required. Never log QR contents, nonce values, private keys, or proof payloads.
 
 ### Replay, abuse, and lifecycle
 - Nonces are random, expire, and are consumed atomically once.
