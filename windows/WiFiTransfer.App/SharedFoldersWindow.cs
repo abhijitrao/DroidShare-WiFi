@@ -238,5 +238,5 @@ public sealed class SharedFoldersWindow : Window
     };
 
     private static SolidColorBrush Brush(string color) =>
-        new((Color)new ColorConverter().ConvertFromString(color));
+        new((Color)ColorConverter.ConvertFromString(color));
 }
