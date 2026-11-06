@@ -444,8 +444,8 @@ object SecureTlsProbe {
         val safeDirectories = directories.distinct().sortedBy { it.count { ch -> ch == '/' } }
         safeDirectories.forEach { path ->
             require(path.isNotBlank() && path.length <= 2048 && !path.startsWith("/") &&
-                path.split('/').none { it.isBlank() || it == "." || it == ".." || it.contains('\\\\') } &&
-                path.split('/').all { it.length <= 240 && it.none { ch -> ch == '\\u0000' || ch == '\\\\' } }) {
+                path.split('/').none { it.isBlank() || it == "." || it == ".." || it.contains('\\') } &&
+                path.split('/').all { it.length <= 240 && it.none { ch -> ch == '\u0000' || ch == '\\' } }) {
                 "Invalid upload directory path."
             }
         }
