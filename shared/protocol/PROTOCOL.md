@@ -28,7 +28,7 @@ Android sends HELLO and Windows returns WELCOME. Android then sends PING and Win
 - The TLS stream uses TLS 1.2 or 1.3; no global trust-all handler is used.
 - Android sends `PAIR_HELLO` with its UUID, device name, QR nonce, and P-256 public key from Android Keystore.
 - Windows atomically reserves the current QR nonce, rejects expired/replayed/replaced nonces, and asks the Windows user for explicit approval.
-- Windows sends a fresh 256-bit challenge. Android signs it using its Keystore private key with SHA256withECDSA; Windows verifies the signature against the supplied P-256 public key.
+- Windows sends a fresh 256-bit challenge. Android signs it using its Keystore private key with SHA256withECDSA and sends the ASN.1 DER-encoded ECDSA signature. Windows verifies it against the supplied P-256 public key using the RFC 3279 DER sequence format (not the .NET P1363 default).
 - On successful proof, Windows consumes the nonce and stores the Android public key. It returns `PAIR_APPROVED`; Android persists the Windows certificate pin only after validating that final response.
 - The nonce registry is memory-only; refresh/restart invalidates pending QR state. The nonce can be reserved by only one concurrent pairing attempt.
 - The old plaintext diagnostic endpoint remains separate on port 45821.
