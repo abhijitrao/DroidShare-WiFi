@@ -1,11 +1,11 @@
 # DroidShare-WiFi Local Protocol (v1 draft)
 
 ## Status
-The current implementation is a Phase 1 diagnostic protocol only. The secure-pairing section below is a design contract, not implemented behavior. Until pairing is complete, no filesystem operation or file transfer may be exposed.
+The current implementation supports plaintext discovery/diagnostics plus a certificate-pinned TLS diagnostic probe. Secure pairing is still not implemented. No filesystem operation or file transfer may be exposed.
 
 ## Existing diagnostic transport
 - Discovery: IPv4 UDP broadcast on port 45820.
-- Diagnostic TCP session: port 45821.
+- Diagnostic TCP session: port 45821 (plaintext; connectivity testing only).\n- TLS diagnostic session: port 45822 (certificate pinning; no pairing or file access).
 - Control messages: UTF-8 JSON, one object per line, maximum 16 KiB.
 - Protocol version: integer 1.
 
@@ -19,7 +19,7 @@ Windows replies by unicast with JSON containing type DROIDSHARE_DEVICE, protocol
 ### Diagnostic handshake
 Android sends HELLO and Windows returns WELCOME. Android then sends PING and Windows returns PONG. This exchange is plaintext and unauthenticated. The measured round-trip time is a connectivity diagnostic, not a throughput benchmark. The server applies a five-second idle timeout.
 
-## Secure pairing design (partially scaffolded; no active pairing yet)
+## TLS diagnostic probe (implemented; pairing not active)\n\n- Windows listens on TCP port 45822 using its persisted self-signed server certificate.\n- The pairing QR advertises this TLS endpoint and the SHA-256 fingerprint of the DER certificate.\n- Android connects only after the user taps **Connect securely**.\n- Android validates the certificate validity period and compares the exact SHA-256 fingerprint before sending `SECURE_HELLO`. It does not use a global trust-all certificate handler.\n- Windows replies `TLS_READY` over the encrypted stream.\n- This proves that the endpoint presented the certificate encoded in the scanned QR. It does not prove Android identity, consume the QR nonce, establish a paired-device record, or authorize filesystem access.\n- The old plaintext diagnostic endpoint remains separate on port 45821.\n\n## Secure pairing design (partially scaffolded; no active pairing yet)
 
 ### Roles and trust model
 - Windows is the pairing host and displays a QR code.
