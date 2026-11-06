@@ -5,7 +5,10 @@ using System.Text.Json;
 namespace WiFiTransfer.App.Services;
 
 public sealed record TrustedDevice(string DeviceId, string DeviceName, string PublicKeyBase64,
-    string PublicKeySha256, DateTimeOffset PairedAt, bool IsRevoked);
+    string PublicKeySha256, DateTimeOffset PairedAt, bool IsRevoked)
+{
+    public string DisplayLabel => $"{DeviceName} · {DeviceId} · {PublicKeySha256[..12]}";
+}
 
 public sealed class TrustedDeviceStore
 {
@@ -23,6 +26,19 @@ public sealed class TrustedDeviceStore
             devices.RemoveAll(d => d.DeviceId == deviceId);
             devices.Add(new TrustedDevice(deviceId, deviceName, publicKeyBase64, fingerprint, DateTimeOffset.UtcNow, false));
             Save(devices);
+        }
+    }
+
+    public bool Revoke(string deviceId)
+    {
+        lock (_gate)
+        {
+            var devices = Load();
+            var index = devices.FindIndex(d => d.DeviceId == deviceId && !d.IsRevoked);
+            if (index < 0) return false;
+            devices[index] = devices[index] with { IsRevoked = true };
+            Save(devices);
+            return true;
         }
     }
 
