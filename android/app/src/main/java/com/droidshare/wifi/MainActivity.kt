@@ -4,6 +4,8 @@ import android.os.Bundle
 import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.graphics.Color
@@ -64,7 +66,44 @@ class MainActivity : ComponentActivity() {
             var busy by remember { mutableStateOf(false) }
             var tlsStatus by remember { mutableStateOf("Pairing has not been attempted.") }
             var connectedEndpoint by remember { mutableStateOf<Triple<String, Int, String>?>(null) }
+            var pendingDownload by remember { mutableStateOf<Pair<RemoteShare, RemoteDirectoryEntry>?>(null) }
+            var transferStatus by remember { mutableStateOf<String?>(null) }
+            var transferBytes by remember { mutableStateOf(0L) }
+            var transferTotal by remember { mutableStateOf(0L) }
             val scope = rememberCoroutineScope()
+            val downloadLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.CreateDocument("application/octet-stream")
+            ) { destination ->
+                val pending = pendingDownload
+                val endpoint = connectedEndpoint
+                pendingDownload = null
+                if (destination == null) {
+                    transferStatus = "Download cancelled."
+                } else if (pending != null && endpoint != null) {
+                    val (share, entry) = pending
+                    val relativePath = if (share.currentPath.isBlank()) entry.name else share.currentPath + "/" + entry.name
+                    scope.launch {
+                        busy = true
+                        transferBytes = 0L
+                        transferTotal = entry.size
+                        transferStatus = "Preparing secure download…"
+                        val result = withContext(Dispatchers.IO) {
+                            runCatching {
+                                SecureTlsProbe.downloadFile(
+                                    this@MainActivity, endpoint.first, endpoint.second, endpoint.third,
+                                    share.shareId, relativePath, destination
+                                ) { received, total ->
+                                    transferBytes = received
+                                    transferTotal = total
+                                }
+                            }
+                        }
+                        result.onSuccess { transferStatus = it }
+                            .onFailure { transferStatus = "Download failed: " + (it.localizedMessage ?: "Transfer error") }
+                        busy = false
+                    }
+                }
+            }
 
             fun browseShare(share: RemoteShare, path: String) {
                 val endpoint = connectedEndpoint ?: return
@@ -265,6 +304,36 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
+                        if (transferStatus != null) {
+                            Spacer(Modifier.height(16.dp))
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White)
+                            ) {
+                                Column(Modifier.padding(16.dp)) {
+                                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                                        Text("FILE TRANSFER", color = muted, style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                                        Spacer(Modifier.weight(1f))
+                                        if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                                    }
+                                    Spacer(Modifier.height(8.dp))
+                                    Text(transferStatus ?: "", color = ink, style = MaterialTheme.typography.bodyMedium)
+                                    if (busy && transferTotal > 0L) {
+                                        Spacer(Modifier.height(10.dp))
+                                        LinearProgressIndicator(
+                                            progress = (transferBytes.toFloat() / transferTotal.toFloat()).coerceIn(0f, 1f),
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                        Spacer(Modifier.height(6.dp))
+                                        Text("${formatFileSize(transferBytes)} of ${formatFileSize(transferTotal)}",
+                                            color = muted, style = MaterialTheme.typography.labelSmall)
+                                    }
+                                }
+                            }
+                        }
+
                         if (discoveredShares.value.isNotEmpty()) {
                             Spacer(Modifier.height(22.dp))
                             Text("SHARED WITH YOU", style = MaterialTheme.typography.labelMedium,
@@ -342,10 +411,23 @@ class MainActivity : ComponentActivity() {
                                                     Spacer(Modifier.width(9.dp))
                                                     Text(entry.name, color = ink, style = MaterialTheme.typography.bodySmall,
                                                         modifier = Modifier.weight(1f), maxLines = 1)
-                                                    if (entry.isDirectory) Text("OPEN  ›", color = violet,
-                                                        style = MaterialTheme.typography.labelSmall)
-                                                    else Text(formatFileSize(entry.size), color = muted,
-                                                        style = MaterialTheme.typography.labelSmall)
+                                                    if (entry.isDirectory) {
+                                                        Text("OPEN  ›", color = violet,
+                                                            style = MaterialTheme.typography.labelSmall)
+                                                    } else {
+                                                        Column(horizontalAlignment = androidx.compose.ui.Alignment.End) {
+                                                            Text(formatFileSize(entry.size), color = muted,
+                                                                style = MaterialTheme.typography.labelSmall)
+                                                            TextButton(
+                                                                enabled = !busy && connectedEndpoint != null,
+                                                                onClick = {
+                                                                    pendingDownload = share to entry
+                                                                    downloadLauncher.launch(entry.name)
+                                                                },
+                                                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                                                            ) { Text("DOWNLOAD", color = violet, style = MaterialTheme.typography.labelSmall) }
+                                                        }
+                                                    }
                                                 }
                                             }
                                             if (share.truncated)
