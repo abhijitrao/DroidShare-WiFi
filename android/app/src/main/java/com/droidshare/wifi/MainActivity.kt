@@ -74,6 +74,32 @@ class MainActivity : ComponentActivity() {
             var transferTotal by remember { mutableStateOf(0L) }
             var transferSpeed by remember { mutableStateOf(0L) }
             val scope = rememberCoroutineScope()
+            fun browseShare(share: RemoteShare, path: String) {
+                val endpoint = connectedEndpoint ?: return
+                scope.launch {
+                    busy = true
+                    status = if (path.isBlank()) "Opening shared folder…" else "Opening $path…"
+                    val result = withContext(Dispatchers.IO) {
+                        runCatching {
+                            SecureTlsProbe.connectTrusted(
+                                this@MainActivity, endpoint.first, endpoint.second, endpoint.third,
+                                share.shareId, path
+                            ).firstOrNull { it.shareId == share.shareId }
+                                ?: throw IllegalStateException("The shared folder is no longer available.")
+                        }
+                    }
+                    result.onSuccess { browsed ->
+                        discoveredShares.value = discoveredShares.value.map {
+                            if (it.shareId == share.shareId) browsed else it
+                        }
+                        status = "Folder loaded."
+                    }.onFailure {
+                        status = "Could not open folder: " + (it.localizedMessage ?: "Connection error")
+                    }
+                    busy = false
+                }
+            }
+
             val downloadLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.CreateDocument("application/octet-stream")
             ) { destination ->
@@ -168,31 +194,6 @@ class MainActivity : ComponentActivity() {
                 busy = false
             }
 
-            fun browseShare(share: RemoteShare, path: String) {
-                val endpoint = connectedEndpoint ?: return
-                scope.launch {
-                    busy = true
-                    status = if (path.isBlank()) "Opening shared folder…" else "Opening $path…"
-                    val result = withContext(Dispatchers.IO) {
-                        runCatching {
-                            SecureTlsProbe.connectTrusted(
-                                this@MainActivity, endpoint.first, endpoint.second, endpoint.third,
-                                share.shareId, path
-                            ).firstOrNull { it.shareId == share.shareId }
-                                ?: throw IllegalStateException("The shared folder is no longer available.")
-                        }
-                    }
-                    result.onSuccess { browsed ->
-                        discoveredShares.value = discoveredShares.value.map {
-                            if (it.shareId == share.shareId) browsed else it
-                        }
-                        status = "Folder loaded."
-                    }.onFailure {
-                        status = "Could not open folder: " + (it.localizedMessage ?: "Connection error")
-                    }
-                    busy = false
-                }
-            }
 
             MaterialTheme(
                 colorScheme = lightColorScheme(
