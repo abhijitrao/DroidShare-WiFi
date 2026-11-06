@@ -33,7 +33,8 @@ data class RemoteShare(
     val canDelete: Boolean,
     val canStream: Boolean,
     val entries: List<RemoteDirectoryEntry>,
-    val truncated: Boolean
+    val truncated: Boolean,
+    val currentPath: String = ""
 )
 
 object SecureTlsProbe {
@@ -156,8 +157,10 @@ object SecureTlsProbe {
     }
 
 
-    fun connectTrusted(context: Context, host: String, port: Int, windowsDeviceId: String): List<RemoteShare> {
+    fun connectTrusted(context: Context, host: String, port: Int, windowsDeviceId: String, browseShareId: String? = null, browsePath: String = ""): List<RemoteShare> {
         require(windowsDeviceId.matches(Regex("^[a-f0-9]{32}$"))) { "Invalid Windows device identity." }
+        require(browsePath.length <= 2048 && !browsePath.startsWith("/") && !browsePath.startsWith("\\\\")) { "Invalid shared folder path." }
+        require(browsePath.split('/').none { it == "." || it == ".." || it.contains('\\\\') }) { "Invalid shared folder path." }
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val fingerprint = prefs.getString("trusted_windows_" + windowsDeviceId, null)
             ?: throw IllegalStateException("This Windows device is not paired yet. Scan its pairing QR first.")
@@ -224,11 +227,12 @@ object SecureTlsProbe {
                 val share = sharesJson.getJSONObject(index)
                 val shareId = share.getString("shareId")
                 val name = share.getString("name")
+                val requestedPath = if (browseShareId == shareId) browsePath else ""
                 writeLine(tls, JSONObject()
                     .put("type", "LIST_DIRECTORY")
                     .put("protocolVersion", 1)
                     .put("shareId", shareId)
-                    .put("path", ""))
+                    .put("path", requestedPath))
 
                 val listing = JSONObject(readLine(tls.inputStream))
                 if (listing.optString("type") == "SESSION_ERROR")
@@ -256,7 +260,8 @@ object SecureTlsProbe {
                     canDelete = share.optBoolean("canDelete"),
                     canStream = share.optBoolean("canStream"),
                     entries = entries,
-                    truncated = listing.optBoolean("truncated")
+                    truncated = listing.optBoolean("truncated"),
+                    currentPath = listing.optString("path")
                 )
             }
             return shares
