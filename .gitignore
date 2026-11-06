@@ -1,0 +1,30 @@
+# Android / Gradle
+.gradle/
+**/build/
+local.properties
+*.iml
+
+# Android Studio
+.idea/
+.externalNativeBuild/
+.cxx/
+
+# .NET / Visual Studio
+[Bb]in/
+[Oo]bj/
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Packages / generated outputs
+*.apk
+*.aab
+*.msi
+*.exe
+*.pdb
+
+# OS/editor
+.DS_Store
+Thumbs.db
