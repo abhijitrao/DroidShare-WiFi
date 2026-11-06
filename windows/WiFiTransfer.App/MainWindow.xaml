@@ -32,7 +32,7 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel>
-                        <TextBlock Text="Pairing identity · QR preview" FontWeight="SemiBold" FontSize="16"/>
+                        <TextBlock Text="Pairing identity · Secure QR" FontWeight="SemiBold" FontSize="16"/>
                         <TextBlock x:Name="PairingStatusText"
                                    Text="Preparing Windows device identity…"
                                    Foreground="#D1D5DB" Margin="0,10,12,0" TextWrapping="Wrap"/>
@@ -54,7 +54,7 @@
             <Border Grid.Row="5" Background="#1F2937" CornerRadius="10" Padding="16" Margin="0,16,0,0">
                 <StackPanel>
                     <TextBlock Text="Phase 1 diagnostic mode" FontWeight="SemiBold"/>
-                    <TextBlock Text="QR scanning can now establish a certificate-pinned TLS diagnostic connection. Device pairing, nonce consumption, trust storage, file access, and transfer are not enabled yet."
+                    <TextBlock Text="Scan the QR on Android and tap Connect securely. Windows will ask you to approve the Android identity. The QR nonce is single-use; file access and transfer remain disabled."
                                TextWrapping="Wrap" Foreground="#D1D5DB" Margin="0,8,0,0"/>
                     <TextBlock x:Name="LastEventText" Text="No Android device connected yet."
                                Foreground="#9CA3AF" Margin="0,14,0,0"/>
