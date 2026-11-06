@@ -86,8 +86,14 @@ See docs/ARCHITECTURE.md, docs/SECURITY.md, and shared/protocol/PROTOCOL.md.
 **Exit:** authenticated local session without manual IP/port entry. No file API before exit.
 
 ### Phase 2 — Bidirectional file transfer
-- Single/multiple file streaming both directions; queue, progress, speed, cancellation.
-**Exit:** repeatable transfers with bounded memory.
+- [x] Windows shared-folder configuration UI with explicit folder selection.
+- [x] Persist per-share Read, Write, Delete, Stream permissions; defaults are Read + Stream only.
+- [x] Add/remove shares without deleting user files; duplicate roots are rejected.
+- [x] Add a path authorization/containment guard that rejects rooted paths, traversal, and existing reparse points in the share path and its ancestors.
+- [ ] Establish authenticated reconnect sessions for already paired devices and enforce trust/revocation on every session.
+- [ ] Android shared-folder browser and Windows share-list API over authenticated TLS.
+- [ ] Single/multiple file streaming both directions; queue, progress, speed, cancellation.
+**Exit:** repeatable transfers with bounded memory. Folder configuration is local-only until the authenticated share API is implemented; no remote file access is enabled yet.
 
 ### Phase 3 — Folder transfer
 - Recursive manifest, directory creation, conflict policy, path validation.
