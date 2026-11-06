@@ -41,7 +41,7 @@ public partial class MainWindow : Window
             _tls = new TlsHostService(_certificate, _pendingPairing, _trustedDevices, ApprovePairingAsync);
             await _tls.StartAsync();
             _tls.SecureClientConnected += remote =>
-                Dispatcher.Invoke(() => LastEventText.Text = $"Certificate-pinned TLS diagnostic from {remote}");
+                Dispatcher.Invoke(() => LastEventText.Text = $"Secure pairing completed with {remote}");
             await _tcp.StartAsync();
             await _discovery.StartAsync();
             _tcp.ClientConnected += remote =>
