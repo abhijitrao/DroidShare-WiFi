@@ -32,7 +32,7 @@ The scanner is bundled and works offline; camera permission is requested by the 
 1. Connect Windows and Android to the same non-isolated Wi-Fi network.
 2. Start the Windows app and allow its private-network firewall prompt if shown.
 3. Start the Android app and tap **Find Windows device** to test the existing diagnostic path.
-4. Tap **Scan Windows pairing QR** and scan the Windows preview QR.
+4. Tap **Scan Windows pairing QR** and scan the active Windows pairing QR.
 5. Confirm Android shows the Windows name, TLS endpoint, fingerprint, and expiry.
 6. Tap **Connect securely**. Confirm Windows shows an approval dialog with Android device name, ID, and public-key fingerprint.
 7. Reject the request and confirm Android reports rejection and no paired state is shown. Refresh the QR and try again.
@@ -43,8 +43,8 @@ The scanner is bundled and works offline; camera permission is requested by the 
 12. Repeat with a hotspot topology where the hotspot host permits client-to-client communication.
 
 ## Current limitations and safety
-- Pairing stores public identity material, but trusted-device revocation UI, recovery from a lost final response, transfer authorization, and file transfer are not implemented. No file access is enabled.
+- Pairing stores public identity material. Verify the Windows paired-device manager lists the new Android device and can revoke it. Android-side trust management, recovery from a lost final response, transfer authorization, and file transfer are not implemented. No file access is enabled.
 - The existing TCP diagnostic is plaintext and unauthenticated. It does not send files.
 - Discovery currently uses IPv4 limited broadcast; some routers/hotspots block client broadcast or client-to-client traffic.
-- Nonce validation and replay prevention, explicit approval/proof, trust storage/revocation, transfer, resume, and DLNA remain pending.
+- Android-side trust management, recovery from a lost final response, transfer, resume, and DLNA remain pending.
 - Do not expose the diagnostic listener to an untrusted/public network.
