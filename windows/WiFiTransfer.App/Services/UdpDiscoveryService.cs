@@ -10,6 +10,7 @@ public sealed class UdpDiscoveryService : IAsyncDisposable
     public const int Port = 45820;
     private readonly CancellationTokenSource _shutdown = new();
     private UdpClient? _udp;
+    public string WindowsDeviceId { get; set; } = string.Empty;
 
     public async Task StartAsync()
     {
@@ -38,6 +39,8 @@ public sealed class UdpDiscoveryService : IAsyncDisposable
                     type = "DROIDSHARE_DEVICE",
                     protocolVersion = 1,
                     deviceName = Environment.MachineName,
+                    deviceId = WindowsDeviceId,
+                    tlsPort = TlsHostService.Port,
                     tcpPort = TcpHostService.Port
                 });
 
