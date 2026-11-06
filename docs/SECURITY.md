@@ -1,7 +1,7 @@
 # Security Design
 
 ## Current security posture
-The implementation has a plaintext TCP diagnostic on port 45821 and a TLS endpoint on port 45822. UDP discovery and the plaintext HELLO/WELCOME/PING/PONG exchange do not authenticate either device. TLS supports first-time pairing and fresh challenge-proof authentication for already trusted Android identities. Windows checks revocation before session establishment and again before each folder listing request. Android can list explicitly shared Windows folders and root metadata over the authenticated TLS session. File contents, upload/download, write, delete, streaming, nested folder navigation, and Android-side trust management are not implemented.
+The implementation has a plaintext TCP diagnostic on port 45821 and a TLS endpoint on port 45822. UDP discovery and the plaintext HELLO/WELCOME/PING/PONG exchange do not authenticate either device. TLS supports first-time pairing and fresh challenge-proof authentication for already trusted Android identities. Windows checks revocation before session establishment and again before each folder listing request. Android can browse explicitly shared Windows folders, including nested directory metadata, over authenticated TLS sessions. Windows checks trust/revocation and Read permission for each listing and resolves each relative path beneath the configured share root. File contents, upload/download, write, delete, streaming, and Android-side trust management are not implemented.
 ## Security boundaries
 - UDP discovery is untrusted input and provides connection hints only.
 - A QR code is a short-lived pairing bootstrap, not a permanent credential.
@@ -36,7 +36,7 @@ No file listing, upload, download, write, delete, or media-stream request may be
 - New shares default to Read + Stream. Write and Delete require explicit opt-in; Write/Delete cannot be enabled unless Read is also enabled.
 - Removing a share only removes its configuration; it never deletes files.
 - The current path guard rejects rooted client paths, `..` traversal, canonical paths outside the share root, and existing reparse points in the root ancestry/requested path.
-- The guard is not yet wired to a network file API. Before enabling filesystem operations, re-check authorization and path containment immediately before each operation and use handle-based/reparse-safe access where possible to mitigate TOCTOU races.
+- The guard is wired to the read-only directory metadata listing API. No file content operations are exposed. Before enabling upload/download/write/delete/stream operations, re-check authorization and path containment immediately before each operation and use handle-based/reparse-safe access where possible to mitigate TOCTOU races.
 
 ## Threats to test
 - Forged UDP discovery response.
