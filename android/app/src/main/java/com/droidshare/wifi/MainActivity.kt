@@ -34,7 +34,7 @@ class MainActivity : ComponentActivity() {
         } else {
             try {
                 scannedQr.value = PairingQrPayload.parse(contents)
-                scanMessage.value = "QR payload validated. Connect to verify the Windows certificate."
+                scanMessage.value = "QR payload validated. Connect to request secure pairing."
             } catch (error: Exception) {
                 scannedQr.value = null
                 scanMessage.value = error.message ?: "Invalid pairing QR code."
@@ -48,7 +48,7 @@ class MainActivity : ComponentActivity() {
             MaterialTheme {
                 var status by remember { mutableStateOf("Ready to discover a Windows device") }
                 var busy by remember { mutableStateOf(false) }
-                var tlsStatus by remember { mutableStateOf("TLS connection has not been tested.") }
+                var tlsStatus by remember { mutableStateOf("Pairing has not been attempted.") }
                 val scope = rememberCoroutineScope()
                 Surface(modifier = Modifier.fillMaxSize()) {
                     Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
@@ -102,7 +102,7 @@ class MainActivity : ComponentActivity() {
                                         style = MaterialTheme.typography.bodySmall
                                     )
                                     Text(
-                                        "TLS probe verifies the exact certificate fingerprint. It does not pair devices or grant file access.",
+                                        "Connect securely verifies the Windows certificate, requests Windows approval, and proves this Android device identity.",
                                         color = MaterialTheme.colorScheme.error,
                                         style = MaterialTheme.typography.bodySmall
                                     )
@@ -116,7 +116,7 @@ class MainActivity : ComponentActivity() {
                                                 tlsStatus = "Connecting and validating Windows certificate…"
                                                 tlsStatus = withContext(Dispatchers.IO) {
                                                     try {
-                                                        SecureTlsProbe.connect(pairing)
+                                                        SecureTlsProbe.connect(this@MainActivity, pairing)
                                                     } catch (error: Exception) {
                                                         "TLS connection failed: " + (error.localizedMessage ?: error.javaClass.simpleName)
                                                     }
@@ -133,7 +133,7 @@ class MainActivity : ComponentActivity() {
                         Spacer(Modifier.height(20.dp))
                         Text(
                             "Both devices must be connected to a network that allows local device communication. " +
-                                "The TLS test verifies the scanned Windows certificate. Device pairing and file transfer are not enabled.",
+                                "Secure pairing verifies both device identities. File sharing is not enabled yet.",
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
