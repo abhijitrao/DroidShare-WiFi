@@ -786,10 +786,40 @@ class MainActivity : ComponentActivity() {
     private fun discoverAndHandshakeOnce(autoReconnectOnly: Boolean): DiscoveryResult {
         val request = "DROIDSHARE_DISCOVER_V1".toByteArray(StandardCharsets.UTF_8)
         return try {
-            DatagramSocket().use { udp ->
+            val connectivity = getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
+                as android.net.ConnectivityManager
+            val wifiNetwork = connectivity.allNetworks.firstOrNull { network ->
+                connectivity.getNetworkCapabilities(network)
+                    ?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true
+            } ?: throw IllegalStateException("No active Wi-Fi network found. Connect the phone to the same Wi-Fi as Windows.")
+
+            val wifiLink = connectivity.getLinkProperties(wifiNetwork)
+                ?: throw IllegalStateException("Could not read the active Wi-Fi network configuration.")
+            val ipv4Link = wifiLink.linkAddresses.firstOrNull {
+                it.address is java.net.Inet4Address
+            } ?: throw IllegalStateException("The active Wi-Fi network has no IPv4 address.")
+
+            val ipBytes = ipv4Link.address.address
+            val prefix = ipv4Link.prefixLength
+            val broadcastBytes = ipBytes.copyOf()
+            for (index in broadcastBytes.indices) {
+                val bitsRemaining = prefix - (index * 8)
+                val mask = when {
+                    bitsRemaining >= 8 -> 0xFF
+                    bitsRemaining <= 0 -> 0
+                    else -> (0xFF shl (8 - bitsRemaining)) and 0xFF
+                }
+                broadcastBytes[index] = ((ipBytes[index].toInt() and 0xFF) or (mask.inv() and 0xFF)).toByte()
+            }
+            val broadcast = InetAddress.getByAddress(broadcastBytes)
+
+            DatagramSocket(null).use { udp ->
+                // Bind discovery to Wi-Fi explicitly. The default Android route may still point
+                // to mobile data or a previous network immediately after a Wi-Fi switch.
+                wifiNetwork.bindSocket(udp)
+                udp.bind(null)
                 udp.broadcast = true
-                udp.soTimeout = 2500
-                val broadcast = InetAddress.getByName("255.255.255.255")
+                udp.soTimeout = 3500
                 udp.send(DatagramPacket(request, request.size, broadcast, 45820))
                 val buffer = ByteArray(2048)
                 val response = DatagramPacket(buffer, buffer.size)
