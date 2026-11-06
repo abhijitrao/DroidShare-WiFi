@@ -1,7 +1,7 @@
 # Security Design
 
 ## Current security posture
-The current Phase 1 implementation is a plaintext, unauthenticated LAN diagnostic only. UDP discovery and the HELLO/WELCOME/PING/PONG exchange do not authenticate either device. Do not use this build to expose folders or transfer files.
+The current Phase 1 implementation has two distinct diagnostics: plaintext TCP on port 45821 and a certificate-pinned TLS probe on port 45822. UDP discovery and the plaintext HELLO/WELCOME/PING/PONG exchange do not authenticate either device. The TLS probe verifies that the server presents the exact certificate fingerprint scanned in the QR, but it does not authenticate the Android device, consume the QR nonce, or create trust. Do not use this build to expose folders or transfer files.
 
 ## Security boundaries
 - UDP discovery is untrusted input and provides connection hints only.
@@ -44,7 +44,7 @@ No file listing, upload, download, write, delete, or media-stream request may be
 - Path traversal and Windows reparse-point/symlink escape before file sharing is enabled.
 
 
-## Windows identity and QR preview implementation
-The Windows app now creates or loads a self-signed server-authentication certificate in the CurrentUser personal certificate store. Its private key is not included in the QR. The UI displays the SHA-256 fingerprint and generates a QR preview containing a random 256-bit nonce, a 120-second expiry, device identity, and the selected local IPv4 endpoint hint.
+## Windows identity, QR, and TLS probe implementation
+The Windows app creates or loads a self-signed server-authentication certificate in the CurrentUser personal certificate store. Its private key is not included in the QR. The UI displays the SHA-256 fingerprint and generates a QR containing a random 256-bit nonce, a 120-second expiry, device identity, and the TLS endpoint hint on port 45822.
 
-This is preview-only. The existing TCP listener is still plaintext; it does not validate or consume the QR nonce and does not perform TLS certificate presentation. The UI explicitly warns users not to scan the preview. Do not treat QR generation as completed pairing or enable file access until the TLS and pairing protocol is implemented and tested.
+The Windows TLS listener presents this certificate. Android connects only after explicit user action and pins the exact SHA-256 fingerprint from the QR before sending a diagnostic hello. Windows responds over the encrypted stream. This is not completed pairing: the server does not yet validate or consume the QR nonce, authenticate Android, or persist trust. The separate TCP diagnostic listener on port 45821 remains plaintext. Do not enable file access until authenticated pairing, trust/revocation, and share authorization are implemented and tested.
