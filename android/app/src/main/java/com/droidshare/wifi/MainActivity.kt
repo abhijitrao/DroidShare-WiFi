@@ -70,6 +70,7 @@ class MainActivity : ComponentActivity() {
             var transferStatus by remember { mutableStateOf<String?>(null) }
             var transferBytes by remember { mutableStateOf(0L) }
             var transferTotal by remember { mutableStateOf(0L) }
+            var transferSpeed by remember { mutableStateOf(0L) }
             val scope = rememberCoroutineScope()
             val downloadLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.CreateDocument("application/octet-stream")
@@ -86,7 +87,9 @@ class MainActivity : ComponentActivity() {
                         busy = true
                         transferBytes = 0L
                         transferTotal = entry.size
+                        transferSpeed = 0L
                         transferStatus = "Preparing secure download…"
+                        val transferStartedAt = SystemClock.elapsedRealtime()
                         val result = withContext(Dispatchers.IO) {
                             runCatching {
                                 SecureTlsProbe.downloadFile(
@@ -95,6 +98,8 @@ class MainActivity : ComponentActivity() {
                                 ) { received, total ->
                                     transferBytes = received
                                     transferTotal = total
+                                    val elapsed = (SystemClock.elapsedRealtime() - transferStartedAt).coerceAtLeast(1L)
+                                    transferSpeed = received * 1000L / elapsed
                                 }
                             }
                         }
@@ -327,7 +332,7 @@ class MainActivity : ComponentActivity() {
                                             modifier = Modifier.fillMaxWidth()
                                         )
                                         Spacer(Modifier.height(6.dp))
-                                        Text("${formatFileSize(transferBytes)} of ${formatFileSize(transferTotal)}",
+                                        Text("${formatFileSize(transferBytes)} of ${formatFileSize(transferTotal)} · ${formatFileSize(transferSpeed)}/s",
                                             color = muted, style = MaterialTheme.typography.labelSmall)
                                     }
                                 }
