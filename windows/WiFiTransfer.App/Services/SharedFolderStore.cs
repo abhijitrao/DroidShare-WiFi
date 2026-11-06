@@ -126,7 +126,15 @@ public sealed class SharedFolderStore
 
     private static void RejectExistingReparsePoints(string root, string candidate)
     {
-        RejectReparsePoint(root);
+        // Reject reparse points in the selected root and every ancestor as well.
+        // Otherwise a normal-looking child path could still be rooted below a junction.
+        var ancestor = new DirectoryInfo(root);
+        while (ancestor is not null)
+        {
+            if (ancestor.Exists) RejectReparsePoint(ancestor.FullName);
+            ancestor = ancestor.Parent;
+        }
+
         var relative = Path.GetRelativePath(root, candidate);
         if (relative == ".") return;
         var current = root;
