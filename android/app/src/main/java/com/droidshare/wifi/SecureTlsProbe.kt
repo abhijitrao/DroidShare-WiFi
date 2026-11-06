@@ -306,7 +306,8 @@ object SecureTlsProbe {
         try {
             socket.use { tls ->
                 tls.connect(InetSocketAddress(host, port), 5000)
-                tls.soTimeout = 30000
+                tls.tcpNoDelay = true
+                tls.soTimeout = 120000
                 tls.enabledProtocols = tls.supportedProtocols.filter {
                     it == "TLSv1.3" || it == "TLSv1.2"
                 }.toTypedArray()
@@ -359,28 +360,27 @@ object SecureTlsProbe {
                 }
                 val expectedSize = start.optLong("size", -1)
                 require(expectedSize >= 0) { "Windows returned an invalid file size." }
+                check(start.optString("transferMode") == "RAW") {
+                    "Windows selected an unsupported file-transfer mode."
+                }
+                val chunkSize = start.optInt("chunkSize", -1)
+                require(chunkSize in (16 * 1024)..(1024 * 1024)) {
+                    "Windows returned an invalid transfer buffer size."
+                }
                 val digest = MessageDigest.getInstance("SHA-256")
                 var received = 0L
-                var expectedSequence = 0L
+                val buffer = ByteArray(chunkSize)
+                val input = tls.inputStream
                 val output = context.contentResolver.openOutputStream(destination, "w")
                     ?: throw IllegalStateException("Android could not open the selected destination.")
                 output.use { target ->
                     while (received < expectedSize) {
-                        val frame = JSONObject(readLine(tls.inputStream))
-                        if (frame.optString("type") == "SESSION_ERROR")
-                            throw IllegalStateException(frame.optString("message", "Windows stopped the transfer."))
-                        check(frame.optString("type") == "FILE_CHUNK" &&
-                            frame.optInt("protocolVersion") == 1 &&
-                            frame.optLong("sequence", -1) == expectedSequence) {
-                            "File transfer chunk sequence is invalid."
-                        }
-                        val bytes = android.util.Base64.decode(frame.getString("data"), android.util.Base64.DEFAULT)
-                        require(bytes.isNotEmpty() && bytes.size <= 8 * 1024 &&
-                            received + bytes.size <= expectedSize) { "File transfer chunk size is invalid." }
-                        target.write(bytes)
-                        digest.update(bytes)
-                        received += bytes.size
-                        expectedSequence++
+                        val requested = minOf(buffer.size.toLong(), expectedSize - received).toInt()
+                        val count = input.read(buffer, 0, requested)
+                        check(count > 0) { "Windows closed the connection before the complete file arrived." }
+                        target.write(buffer, 0, count)
+                        digest.update(buffer, 0, count)
+                        received += count
                         onProgress(received, expectedSize)
                     }
                     target.flush()
