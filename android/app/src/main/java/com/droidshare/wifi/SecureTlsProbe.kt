@@ -160,7 +160,7 @@ object SecureTlsProbe {
     fun connectTrusted(context: Context, host: String, port: Int, windowsDeviceId: String, browseShareId: String? = null, browsePath: String = ""): List<RemoteShare> {
         require(windowsDeviceId.matches(Regex("^[a-f0-9]{32}$"))) { "Invalid Windows device identity." }
         require(browsePath.length <= 2048 && !browsePath.startsWith("/") && !browsePath.startsWith("\\\\")) { "Invalid shared folder path." }
-        require(browsePath.split('/').none { it == "." || it == ".." || it.contains('\\\\') }) { "Invalid shared folder path." }
+        require(browsePath.split('/').none { it == "." || it == ".." || it.contains('\\') }) { "Invalid shared folder path." }
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val fingerprint = prefs.getString("trusted_windows_" + windowsDeviceId, null)
             ?: throw IllegalStateException("This Windows device is not paired yet. Scan its pairing QR first.")
