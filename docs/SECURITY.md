@@ -1,8 +1,7 @@
 # Security Design
 
 ## Current security posture
-The current Phase 1 implementation has a plaintext TCP diagnostic on port 45821 and a TLS pairing endpoint on port 45822. UDP discovery and the plaintext HELLO/WELCOME/PING/PONG exchange do not authenticate either device. The TLS pairing endpoint pins the Windows certificate, validates a single-use in-memory QR nonce, obtains explicit Windows approval, verifies an Android Keystore P-256 challenge signature, and persists the trusted public identity. Windows trusted-device listing/revocation is implemented; Android-side trust management and file authorization are not implemented. Do not expose folders or transfer files.
-
+The implementation has a plaintext TCP diagnostic on port 45821 and a TLS endpoint on port 45822. UDP discovery and the plaintext HELLO/WELCOME/PING/PONG exchange do not authenticate either device. TLS supports first-time pairing and fresh challenge-proof authentication for already trusted Android identities. Windows checks revocation before session establishment and again before each folder listing request. Android can list explicitly shared Windows folders and root metadata over the authenticated TLS session. File contents, upload/download, write, delete, streaming, nested folder navigation, and Android-side trust management are not implemented.
 ## Security boundaries
 - UDP discovery is untrusted input and provides connection hints only.
 - A QR code is a short-lived pairing bootstrap, not a permanent credential.
