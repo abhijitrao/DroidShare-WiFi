@@ -1,7 +1,7 @@
 # DroidShare-WiFi Local Protocol (v1 draft)
 
 ## Status
-The current implementation supports plaintext discovery/diagnostics, certificate-pinned TLS, and first-time device pairing with a one-time QR nonce and challenge proof. Trusted-device revocation UI and file transfer are not implemented. No filesystem operation or file transfer may be exposed.
+The current implementation supports UDP discovery, certificate-pinned TLS, first-time pairing, authenticated trusted-session re-establishment, Windows shared-folder listing, and root-directory metadata browsing. File upload/download, nested directory navigation, and Android trust management are not implemented. No file content read/write/delete/stream operation is exposed.
 
 ## Existing diagnostic transport
 - Discovery: IPv4 UDP broadcast on port 45820.
