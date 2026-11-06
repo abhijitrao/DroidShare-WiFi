@@ -28,9 +28,16 @@
 
 The pairing message sequence, expiry, replay rules, and QR schema are specified in shared/protocol/PROTOCOL.md. Security requirements are in docs/SECURITY.md.
 
+## Windows shared-folder configuration foundation
+- The Windows app now provides a dedicated shared-folder manager with explicit folder selection, removal, and per-share Read, Write, Delete, and Stream toggles.
+- New shares default to Read + Stream; Write and Delete are opt-in. Removing a share never deletes its contents.
+- Share definitions are persisted under the current user's LocalAppData application directory.
+- `SharedFolderStore.ResolveAuthorizedPath` is the authorization/path-containment primitive for future file APIs. It rejects rooted paths, traversal segments, paths outside the selected root, and existing reparse points in the root ancestry or requested path.
+- This is configuration only: no network share-list, browse, upload, download, delete, or stream API is exposed yet. Filesystem operations must revalidate authorization and path safety immediately before use to address filesystem races.
+
 ## Later architecture
 - Transfer: bounded streaming, file manifests, acknowledgements, resume, SHA-256.
-- Sharing: Windows-selected roots with per-share read/write/delete/stream authorization.
+- Sharing: authenticated Windows-selected roots with per-share read/write/delete/stream authorization.
 - Media: separate UPnP AV / DLNA discovery and HTTP byte-range streaming service.
 
 ## Network caveats
