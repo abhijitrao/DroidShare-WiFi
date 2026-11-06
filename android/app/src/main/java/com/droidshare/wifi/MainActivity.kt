@@ -9,6 +9,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -19,8 +21,27 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.nio.charset.StandardCharsets
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 class MainActivity : ComponentActivity() {
+    private val scannedQr = mutableStateOf<PairingQrPayload?>(null)
+    private val scanMessage = mutableStateOf("No pairing QR scanned yet.")
+    private val scannerLauncher = registerForActivityResult(ScanContract()) { result ->
+        val contents = result.contents
+        if (contents.isNullOrBlank()) {
+            scanMessage.value = "QR scan cancelled."
+        } else {
+            try {
+                scannedQr.value = PairingQrPayload.parse(contents)
+                scanMessage.value = "QR payload validated. Secure pairing is not enabled yet."
+            } catch (error: Exception) {
+                scannedQr.value = null
+                scanMessage.value = error.message ?: "Invalid pairing QR code."
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -33,9 +54,9 @@ class MainActivity : ComponentActivity() {
                         Text("DroidShare-WiFi", style = MaterialTheme.typography.headlineMedium)
                         Spacer(Modifier.height(8.dp))
                         Text("Phase 1 · Local connection test")
-                        Spacer(Modifier.height(24.dp))
-                        Text(status, style = MaterialTheme.typography.bodyLarge)
                         Spacer(Modifier.height(20.dp))
+                        Text(status, style = MaterialTheme.typography.bodyLarge)
+                        Spacer(Modifier.height(16.dp))
                         Button(
                             modifier = Modifier.fillMaxWidth(),
                             enabled = !busy,
@@ -48,10 +69,50 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         ) { Text(if (busy) "Searching…" else "Find Windows device") }
+
                         Spacer(Modifier.height(12.dp))
+                        OutlinedButton(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = {
+                                val options = ScanOptions()
+                                    .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                                    .setPrompt("Scan the QR displayed by DroidShare-WiFi on Windows")
+                                    .setBeepEnabled(false)
+                                    .setOrientationLocked(false)
+                                scannerLauncher.launch(options)
+                            }
+                        ) { Text("Scan Windows pairing QR") }
+
+                        Spacer(Modifier.height(12.dp))
+                        Text(scanMessage.value, style = MaterialTheme.typography.bodyMedium)
+                        scannedQr.value?.let { pairing ->
+                            Spacer(Modifier.height(8.dp))
+                            Card(modifier = Modifier.fillMaxWidth()) {
+                                Column(Modifier.padding(12.dp)) {
+                                    Text(pairing.deviceName, style = MaterialTheme.typography.titleMedium)
+                                    Text("${pairing.host}:${pairing.port}")
+                                    Text(
+                                        "Certificate SHA-256: ${pairing.certificateSha256}",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                    Text(
+                                        "Expires: ${DateTimeFormatter.ofPattern("HH:mm:ss")
+                                            .withZone(ZoneId.systemDefault()).format(pairing.expiresAt)}",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                    Text(
+                                        "Preview only — no network connection or trust is created.",
+                                        color = MaterialTheme.colorScheme.error,
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(20.dp))
                         Text(
                             "Both devices must be connected to a network that allows local device communication. " +
-                                "This diagnostic build does not transfer files yet.",
+                                "This diagnostic build does not transfer files.",
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
