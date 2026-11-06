@@ -59,6 +59,7 @@ public sealed class TlsHostService : IAsyncDisposable
 
     private async Task HandleClientAsync(TcpClient client, CancellationToken cancellationToken)
     {
+        client.NoDelay = true;
         using (client)
         await using (var network = client.GetStream())
         await using (var tls = new System.Net.Security.SslStream(network, leaveInnerStreamOpen: false))
@@ -88,7 +89,7 @@ public sealed class TlsHostService : IAsyncDisposable
                 var requestType = GetString(hello, "type");
                 if (requestType == "SESSION_HELLO")
                 {
-                    await HandleAuthenticatedSessionAsync(hello, reader, writer, timeout.Token);
+                    await HandleAuthenticatedSessionAsync(hello, reader, writer, tls, timeout.Token);
                     return;
                 }
                 if (requestType != "PAIR_HELLO" || GetInt(hello, "protocolVersion") != 1)
@@ -186,7 +187,7 @@ public sealed class TlsHostService : IAsyncDisposable
 
 
     private async Task HandleAuthenticatedSessionAsync(JsonElement hello, StreamReader reader,
-        StreamWriter writer, CancellationToken cancellationToken)
+        StreamWriter writer, System.Net.Security.SslStream tls, CancellationToken cancellationToken)
     {
         if (GetInt(hello, "protocolVersion") != 1)
         { await SendErrorAsync(writer, "Unsupported session protocol."); return; }
@@ -300,6 +301,7 @@ public sealed class TlsHostService : IAsyncDisposable
                     continue;
                 }
 
+                var binaryTransferStarted = false;
                 try
                 {
                     if (!IsTrustedIdentity(deviceId, publicKeyBytes))
@@ -315,32 +317,35 @@ public sealed class TlsHostService : IAsyncDisposable
                         !File.Exists(filePath))
                         throw new UnauthorizedAccessException("The requested item is not a regular shared file.");
 
+                    const int transferBufferSize = 256 * 1024;
                     await using var file = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read,
-                        bufferSize: 64 * 1024, useAsync: true);
+                        bufferSize: transferBufferSize, useAsync: true);
+                    var expectedSize = file.Length;
                     await writer.WriteLineAsync(JsonSerializer.Serialize(new
                     {
                         type = "FILE_START",
                         protocolVersion = 1,
+                        transferMode = "RAW",
+                        chunkSize = transferBufferSize,
                         fileName = Path.GetFileName(filePath),
-                        size = file.Length
+                        size = expectedSize
                     }));
+                    await writer.FlushAsync(cancellationToken);
 
+                    // After FILE_START, exactly expectedSize raw bytes follow on the TLS stream.
+                    // The following FILE_END JSON line resumes the control-message framing.
+                    binaryTransferStarted = true;
                     using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-                    var buffer = new byte[8 * 1024];
+                    var buffer = new byte[transferBufferSize];
                     long sent = 0;
-                    while (true)
+                    while (sent < expectedSize)
                     {
-                        var read = await file.ReadAsync(buffer.AsMemory(), cancellationToken);
-                        if (read == 0) break;
+                        var read = await file.ReadAsync(buffer.AsMemory(0,
+                            (int)Math.Min(buffer.Length, expectedSize - sent)), cancellationToken);
+                        if (read == 0)
+                            throw new IOException("The source file changed during transfer.");
                         hash.AppendData(buffer, 0, read);
-                        var chunk = JsonSerializer.Serialize(new
-                        {
-                            type = "FILE_CHUNK",
-                            protocolVersion = 1,
-                            sequence = sent / buffer.Length,
-                            data = Convert.ToBase64String(buffer, 0, read)
-                        });
-                        await writer.WriteLineAsync(chunk);
+                        await tls.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
                         sent += read;
                     }
 
@@ -352,8 +357,11 @@ public sealed class TlsHostService : IAsyncDisposable
                         sha256 = Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant()
                     }));
                 }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or OperationCanceledException)
                 {
+                    // Once raw bytes start, a JSON error would corrupt the fixed-length stream.
+                    // Closing the TLS session makes the Android receiver detect an incomplete transfer.
+                    if (binaryTransferStarted) return;
                     await writer.WriteLineAsync(JsonSerializer.Serialize(new
                     {
                         type = "SESSION_ERROR",
