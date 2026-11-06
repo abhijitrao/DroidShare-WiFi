@@ -3,7 +3,6 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
-using System.Text;
 
 namespace WiFiTransfer.App.Services;
 
@@ -100,8 +99,8 @@ public sealed class TcpHostService : IAsyncDisposable
         {
             var count = await reader.ReadAsync(buffer.AsMemory(), cancellationToken);
             if (count == 0) return line.Length == 0 ? null : line.ToString();
-            if (buffer[0] == '\\n') return line.ToString();
-            if (buffer[0] != '\\r') line.Append(buffer[0]);
+            if (buffer[0] == '\n') return line.ToString();
+            if (buffer[0] != '\r') line.Append(buffer[0]);
         }
 
         throw new InvalidDataException("Protocol message exceeded 16 KiB.");
