@@ -42,3 +42,9 @@ No file listing, upload, download, write, delete, or media-stream request may be
 - Repeated invalid pairing attempts.
 - App restart while a QR code is active.
 - Path traversal and Windows reparse-point/symlink escape before file sharing is enabled.
+
+
+## Windows identity and QR preview implementation
+The Windows app now creates or loads a self-signed server-authentication certificate in the CurrentUser personal certificate store. Its private key is not included in the QR. The UI displays the SHA-256 fingerprint and generates a QR preview containing a random 256-bit nonce, a 120-second expiry, device identity, and the selected local IPv4 endpoint hint.
+
+This is preview-only. The existing TCP listener is still plaintext; it does not validate or consume the QR nonce and does not perform TLS certificate presentation. The UI explicitly warns users not to scan the preview. Do not treat QR generation as completed pairing or enable file access until the TLS and pairing protocol is implemented and tested.
