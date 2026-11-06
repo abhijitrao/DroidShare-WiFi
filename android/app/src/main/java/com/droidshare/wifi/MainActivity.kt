@@ -30,7 +30,10 @@ import java.nio.charset.StandardCharsets
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
+data class DiscoveryResult(val message: String, val shares: List<RemoteShare> = emptyList())
+
 class MainActivity : ComponentActivity() {
+    private val discoveredShares = mutableStateOf<List<RemoteShare>>(emptyList())
     private val scannedQr = mutableStateOf<PairingQrPayload?>(null)
     private val scanMessage = mutableStateOf("No pairing QR scanned yet.")
     private val scannerLauncher = registerForActivityResult(ScanContract()) { result ->
@@ -134,7 +137,9 @@ class MainActivity : ComponentActivity() {
                                         scope.launch {
                                             busy = true
                                             status = "Searching local Wi-Fi network…"
-                                            status = withContext(Dispatchers.IO) { discoverAndHandshake() }
+                                            val result = withContext(Dispatchers.IO) { discoverAndHandshake() }
+                                            status = result.message
+                                            discoveredShares.value = result.shares
                                             busy = false
                                         }
                                     }
@@ -231,6 +236,65 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
+                        if (discoveredShares.value.isNotEmpty()) {
+                            Spacer(Modifier.height(22.dp))
+                            Text("SHARED WITH YOU", style = MaterialTheme.typography.labelMedium,
+                                color = muted, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                            Spacer(Modifier.height(10.dp))
+                            discoveredShares.value.forEach { share ->
+                                Card(
+                                    modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
+                                    colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White),
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                                ) {
+                                    Column(Modifier.padding(16.dp)) {
+                                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                                            Text("▰", color = violet, style = MaterialTheme.typography.headlineSmall)
+                                            Spacer(Modifier.width(10.dp))
+                                            Column(Modifier.weight(1f)) {
+                                                Text(share.name, color = ink, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+                                                Text("${share.entries.size} items in this folder", color = muted,
+                                                    style = MaterialTheme.typography.labelSmall)
+                                            }
+                                            Text("READ", color = green, style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                                        }
+                                        Spacer(Modifier.height(10.dp))
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            if (share.canWrite) PermissionTag("WRITE", violet)
+                                            if (share.canDelete) PermissionTag("DELETE", androidx.compose.ui.graphics.Color(0xFFB45353))
+                                            if (share.canStream) PermissionTag("STREAM", green)
+                                        }
+                                        if (share.entries.isEmpty()) {
+                                            Text("This folder is empty.", color = muted,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                modifier = Modifier.padding(top = 12.dp))
+                                        } else {
+                                            Spacer(Modifier.height(12.dp))
+                                            share.entries.take(12).forEach { entry ->
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                                                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                                                ) {
+                                                    Text(if (entry.isDirectory) "📁" else "📄")
+                                                    Spacer(Modifier.width(9.dp))
+                                                    Text(entry.name, color = ink, style = MaterialTheme.typography.bodySmall,
+                                                        modifier = Modifier.weight(1f), maxLines = 1)
+                                                    if (!entry.isDirectory) Text(formatFileSize(entry.size), color = muted,
+                                                        style = MaterialTheme.typography.labelSmall)
+                                                }
+                                            }
+                                            if (share.entries.size > 12 || share.truncated)
+                                                Text("Showing first 12 items · Open folder navigation is coming next.",
+                                                    color = muted, style = MaterialTheme.typography.labelSmall,
+                                                    modifier = Modifier.padding(top = 6.dp))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         Spacer(Modifier.height(22.dp))
                         Card(
                             modifier = Modifier.fillMaxWidth(),
@@ -253,7 +317,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun discoverAndHandshake(): String {
+    private fun discoverAndHandshake(): DiscoveryResult {
         val request = "DROIDSHARE_DISCOVER_V1".toByteArray(StandardCharsets.UTF_8)
         return try {
             DatagramSocket().use { udp ->
@@ -267,10 +331,26 @@ class MainActivity : ComponentActivity() {
 
                 val device = JSONObject(String(response.data, 0, response.length, StandardCharsets.UTF_8))
                 if (device.optString("type") != "DROIDSHARE_DEVICE" || device.optInt("protocolVersion") != 1) {
-                    return "Received an unsupported discovery response."
+                    return DiscoveryResult("Received an unsupported discovery response.")
                 }
                 val port = device.optInt("tcpPort", 0)
-                if (port !in 1..65535) return "Windows device returned an invalid port."
+                if (port !in 1..65535) return DiscoveryResult("Windows device returned an invalid port.")
+
+                val windowsDeviceId = device.optString("deviceId")
+                val tlsPort = device.optInt("tlsPort", 0)
+                if (windowsDeviceId.matches(Regex("^[a-f0-9]{32}$")) && tlsPort in 1..65535) {
+                    val prefs = getSharedPreferences("droidshare_trust_v1", MODE_PRIVATE)
+                    if (prefs.contains("trusted_windows_" + windowsDeviceId)) {
+                        val shares = SecureTlsProbe.connectTrusted(
+                            this, response.address.hostAddress ?: return DiscoveryResult("Windows address is unavailable."),
+                            tlsPort, windowsDeviceId
+                        )
+                        return DiscoveryResult(
+                            "Securely connected to ${device.optString("deviceName")} · ${shares.size} shared folder(s) found.",
+                            shares
+                        )
+                    }
+                }
 
                 Socket().use { tcp ->
                     tcp.connect(InetSocketAddress(response.address, port), 3000)
@@ -282,7 +362,7 @@ class MainActivity : ComponentActivity() {
 
                     val welcome = JSONObject(readLine(input))
                     if (welcome.optString("type") != "WELCOME" || welcome.optInt("protocolVersion") != 1) {
-                        return "Windows device responded, but the handshake was rejected."
+                        return DiscoveryResult("Windows device responded, but the diagnostic handshake was rejected. Scan its QR to pair securely.")
                     }
 
                     val startedAt = SystemClock.elapsedRealtime()
@@ -291,15 +371,32 @@ class MainActivity : ComponentActivity() {
                     val pong = JSONObject(readLine(input))
                     val roundTripMs = SystemClock.elapsedRealtime() - startedAt
                     if (pong.optString("type") != "PONG" || pong.optInt("protocolVersion") != 1) {
-                        return "Connected, but the diagnostic ping was rejected."
+                        return DiscoveryResult("Connected, but the diagnostic ping was rejected.")
                     }
-                    "Connected to ${device.optString("deviceName")} successfully · ${roundTripMs} ms"
+                    DiscoveryResult("Found ${device.optString("deviceName")} · ${roundTripMs} ms. Scan its Windows QR to pair securely.")
                 }
             }
         } catch (error: Exception) {
-            "Connection not established: ${error.localizedMessage ?: error.javaClass.simpleName}. " +
-                "Check that both devices are on the same reachable Wi-Fi and Windows firewall allows DroidShare-WiFi."
+            DiscoveryResult("Connection not established: ${error.localizedMessage ?: error.javaClass.simpleName}. " +
+                "Check that both devices are on the same reachable Wi-Fi and Windows firewall allows DroidShare-WiFi.", emptyList())
         }
+    }
+
+    @Composable
+    private fun PermissionTag(label: String, color: androidx.compose.ui.graphics.Color) {
+        Surface(color = color.copy(alpha = 0.10f),
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(30.dp)) {
+            Text(label, modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                color = color, style = MaterialTheme.typography.labelSmall,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+        }
+    }
+
+    private fun formatFileSize(bytes: Long): String = when {
+        bytes < 1024 -> "${bytes} B"
+        bytes < 1024 * 1024 -> "${bytes / 1024} KB"
+        bytes < 1024L * 1024 * 1024 -> "${bytes / (1024 * 1024)} MB"
+        else -> String.format("%.1f GB", bytes / (1024.0 * 1024 * 1024))
     }
 
     private fun readLine(input: java.io.InputStream): String {
