@@ -274,7 +274,7 @@ public sealed class TlsHostService : IAsyncDisposable
             var request = requestDocument.RootElement;
             var requestType = GetString(request, "type");
             if (GetInt(request, "protocolVersion") != 1 ||
-                requestType is not ("LIST_DIRECTORY" or "DOWNLOAD_FILE" or "UPLOAD_FILE" or "REVOKE_SELF"))
+                requestType is not ("LIST_DIRECTORY" or "DOWNLOAD_FILE" or "UPLOAD_FILE" or "CREATE_DIRECTORY" or "REVOKE_SELF"))
             {
                 await SendErrorAsync(writer, "Unsupported authenticated session request.");
                 continue;
