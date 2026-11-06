@@ -286,7 +286,7 @@ class MainActivity : ComponentActivity() {
                                                 }
                                             }
                                             if (share.entries.size > 12 || share.truncated)
-                                                Text("Showing first 12 items · Open folder navigation is coming next.",
+                                                Text("Showing the first 12 items from the shared folder root.",
                                                     color = muted, style = MaterialTheme.typography.labelSmall,
                                                     modifier = Modifier.padding(top = 6.dp))
                                         }
@@ -304,7 +304,7 @@ class MainActivity : ComponentActivity() {
                             Column(Modifier.padding(16.dp)) {
                                 Text("Coming next", color = violet, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                                 Spacer(Modifier.height(4.dp))
-                                Text("Browse Windows shared folders and transfer files securely. Your files stay on your local network.",
+                                Text("Your paired Windows folders are now available here. Secure file upload and download are the next milestone.",
                                     color = ink, style = MaterialTheme.typography.bodySmall)
                             }
                         }
