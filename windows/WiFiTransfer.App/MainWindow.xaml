@@ -40,9 +40,12 @@
                                    Foreground="#9CA3AF" Margin="0,8,12,0" TextWrapping="Wrap"/>
                         <TextBlock x:Name="ExpiryText" Text="QR expires in: —"
                                    Foreground="#FCD34D" Margin="0,8,12,0"/>
-                        <Button x:Name="RefreshQrButton" Content="Refresh QR preview"
-                                Padding="14,8" Margin="0,14,0,0" HorizontalAlignment="Left"
+                        <Button x:Name="RefreshQrButton" Content="Refresh QR"
+                                Padding="14,8" Margin="0,14,8,0" HorizontalAlignment="Left"
                                 Click="RefreshQrButton_Click" IsEnabled="False"/>
+                        <Button Content="Manage paired devices"
+                                Padding="14,8" Margin="0,14,0,0" HorizontalAlignment="Left"
+                                Click="ManageDevicesButton_Click"/>
                     </StackPanel>
                     <Border Grid.Column="1" Background="White" CornerRadius="8" Padding="10"
                             VerticalAlignment="Center">
