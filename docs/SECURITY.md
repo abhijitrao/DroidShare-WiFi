@@ -30,7 +30,14 @@ The current Phase 1 implementation has a plaintext TCP diagnostic on port 45821 
 - A changed fingerprint requires explicit re-pairing.
 
 ## File access gate
-No file listing, upload, download, write, delete, or media-stream request may be served before TLS is established, the peer identity is authenticated, the peer is trusted, the requested operation is authorized by an explicitly configured Windows share, and the resolved path is verified to remain within the selected share root.
+No file listing, upload, download, write, delete, or media-stream request may be served before TLS is established, the peer identity is authenticated for the current session, the peer is trusted and not revoked, the requested operation is authorized by an explicitly configured Windows share, and the resolved path is verified to remain within the selected share root.
+
+## Windows share configuration foundation
+- Share definitions are local configuration only and are stored in the current user's LocalAppData directory.
+- New shares default to Read + Stream. Write and Delete require explicit opt-in; Write/Delete cannot be enabled unless Read is also enabled.
+- Removing a share only removes its configuration; it never deletes files.
+- The current path guard rejects rooted client paths, `..` traversal, canonical paths outside the share root, and existing reparse points in the root ancestry/requested path.
+- The guard is not yet wired to a network file API. Before enabling filesystem operations, re-check authorization and path containment immediately before each operation and use handle-based/reparse-safe access where possible to mitigate TOCTOU races.
 
 ## Threats to test
 - Forged UDP discovery response.
