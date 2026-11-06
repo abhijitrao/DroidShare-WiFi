@@ -487,7 +487,7 @@ public sealed class TlsHostService : IAsyncDisposable
                     }));
                     await writer.FlushAsync(cancellationToken);
                 }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or InvalidDataException or OperationCanceledException)
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or OperationCanceledException)
                 {
                     if (temporaryPath is not null)
                     {
