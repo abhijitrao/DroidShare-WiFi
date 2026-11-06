@@ -1,7 +1,7 @@
 # DroidShare-WiFi Local Protocol (v1 draft)
 
 ## Status
-The current implementation supports plaintext discovery/diagnostics plus a certificate-pinned TLS diagnostic probe. Secure pairing is still not implemented. No filesystem operation or file transfer may be exposed.
+The current implementation supports plaintext discovery/diagnostics, certificate-pinned TLS, and first-time device pairing with a one-time QR nonce and challenge proof. Trusted-device revocation UI and file transfer are not implemented. No filesystem operation or file transfer may be exposed.
 
 ## Existing diagnostic transport
 - Discovery: IPv4 UDP broadcast on port 45820.
@@ -20,17 +20,20 @@ Windows replies by unicast with JSON containing type DROIDSHARE_DEVICE, protocol
 ### Diagnostic handshake
 Android sends HELLO and Windows returns WELCOME. Android then sends PING and Windows returns PONG. This exchange is plaintext and unauthenticated. The measured round-trip time is a connectivity diagnostic, not a throughput benchmark. The server applies a five-second idle timeout.
 
-## TLS diagnostic probe (implemented; pairing not active)
+## TLS transport and pairing (implemented; file access not active)
 
 - Windows listens on TCP port 45822 using its persisted self-signed server certificate.
 - The pairing QR advertises this TLS endpoint and the SHA-256 fingerprint of the DER certificate.
-- Android connects only after the user taps **Connect securely**.
-- Android validates the certificate validity period and compares the exact SHA-256 fingerprint before sending `SECURE_HELLO`. It does not use a global trust-all certificate handler.
-- Windows replies `TLS_READY` over the encrypted stream.
-- This proves that the endpoint presented the certificate encoded in the scanned QR. It does not prove Android identity, consume the QR nonce, establish a paired-device record, or authorize filesystem access.
+- Android connects only after the user taps **Connect securely** and validates the exact certificate SHA-256 fingerprint from the QR.
+- The TLS stream uses TLS 1.2 or 1.3; no global trust-all handler is used.
+- Android sends `PAIR_HELLO` with its UUID, device name, QR nonce, and P-256 public key from Android Keystore.
+- Windows atomically reserves the current QR nonce, rejects expired/replayed/replaced nonces, and asks the Windows user for explicit approval.
+- Windows sends a fresh 256-bit challenge. Android signs it using its Keystore private key with SHA256withECDSA; Windows verifies the signature against the supplied P-256 public key.
+- On successful proof, Windows consumes the nonce and stores the Android public key. It returns `PAIR_APPROVED`; Android persists the Windows certificate pin only after validating that final response.
+- The nonce registry is memory-only; refresh/restart invalidates pending QR state. The nonce can be reserved by only one concurrent pairing attempt.
 - The old plaintext diagnostic endpoint remains separate on port 45821.
 
-## Secure pairing design (partially scaffolded; no active pairing yet)
+## Secure pairing design and current limits
 
 ### Roles and trust model
 - Windows is the pairing host and displays a QR code.
@@ -79,7 +82,7 @@ After scanning, Android validates the QR schema and expiry, connects using TLS, 
 6. Android stores the Windows device ID and pinned certificate fingerprint only after receiving the final successful pairing response.
 7. Both sides show an explicit paired state. Failed, rejected, expired, or interrupted flows leave no trusted-device record.
 
-The exact key algorithm and platform key-storage APIs must be validated against supported OS versions before implementation. Prefer platform-protected private-key storage. Never log QR contents, nonce values, private keys, or proof payloads.
+The initial Android implementation uses an Android Keystore P-256 signing key. Windows stores the public key and metadata in a LocalAppData JSON file. A trusted-device management/revocation UI and recovery flow are still required. Never log QR contents, nonce values, private keys, or proof payloads.
 
 ### Replay, abuse, and lifecycle
 - Nonces are random, expire, and are consumed atomically once.
