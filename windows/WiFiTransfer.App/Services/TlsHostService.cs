@@ -274,7 +274,7 @@ public sealed class TlsHostService : IAsyncDisposable
             var request = requestDocument.RootElement;
             var requestType = GetString(request, "type");
             if (GetInt(request, "protocolVersion") != 1 ||
-                requestType is not ("LIST_DIRECTORY" or "DOWNLOAD_FILE"))
+                requestType is not ("LIST_DIRECTORY" or "DOWNLOAD_FILE" or "REVOKE_SELF"))
             {
                 await SendErrorAsync(writer, "Unsupported authenticated session request.");
                 continue;
@@ -283,6 +283,25 @@ public sealed class TlsHostService : IAsyncDisposable
             if (!IsTrustedIdentity(deviceId, publicKeyBytes))
             {
                 await SendErrorAsync(writer, "This Android device was revoked.");
+                return;
+            }
+
+            if (requestType == "REVOKE_SELF")
+            {
+                var revoked = _trustedDevices.Revoke(deviceId);
+                if (!revoked)
+                {
+                    await SendErrorAsync(writer, "This Android device is already revoked or is no longer trusted.");
+                    return;
+                }
+
+                await writer.WriteLineAsync(JsonSerializer.Serialize(new
+                {
+                    type = "SELF_REVOKED",
+                    protocolVersion = 1,
+                    androidDeviceId = deviceId
+                }));
+                await writer.FlushAsync(cancellationToken);
                 return;
             }
 
