@@ -474,12 +474,15 @@ object SecureTlsProbe {
                 writeLine(tls, JSONObject().put("type", "CREATE_DIRECTORY").put("protocolVersion", 1)
                     .put("shareId", shareId).put("path", directory))
                 val response = JSONObject(readLine(tls.inputStream))
-                if (response.optString("type") == "SESSION_ERROR")
-                    throw IllegalStateException(response.optString("message", "Windows could not create $directory."))
+                if (response.optString("type") in setOf("SESSION_ERROR", "PAIR_ERROR", "ERROR"))
+                    throw IllegalStateException(
+                        response.optString("message").takeIf { it.isNotBlank() }
+                            ?: "Windows could not create $directory."
+                    )
                 check(response.optString("type") == "DIRECTORY_CREATED" &&
                     response.optInt("protocolVersion") == 1 &&
                     response.optString("path") == directory) {
-                    "Windows returned an invalid folder-creation response for $directory."
+                    "Windows returned an invalid folder-creation response for $directory (type=${response.optString("type")}, protocolVersion=${response.optInt("protocolVersion")}, path=${response.optString("path")})."
                 }
             }
 
