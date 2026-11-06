@@ -43,7 +43,7 @@ The scanner is bundled and works offline; camera permission is requested by the 
 12. Repeat with a hotspot topology where the hotspot host permits client-to-client communication.
 
 ## Current limitations and safety
-- Pairing stores public identity material. Verify the Windows paired-device manager lists the new Android device and can revoke it. Android-side trust management, recovery from a lost final response, transfer authorization, and file transfer are not implemented. No file access is enabled.
+- Pairing stores public identity material. Verify the Windows paired-device manager lists the new Android device and can revoke it. Android-side trust management, transfer authorization, and file transfer are not implemented. To test recovery, simulate a lost final `PAIR_APPROVED` response after Windows persists the trust record, then retry with the same Android installation/key and approve again; Windows must accept the identical key and reject a changed key. No file access is enabled.
 - The existing TCP diagnostic is plaintext and unauthenticated. It does not send files.
 - Discovery currently uses IPv4 limited broadcast; some routers/hotspots block client broadcast or client-to-client traffic.
 - Android-side trust management, recovery from a lost final response, transfer, resume, and DLNA remain pending.
