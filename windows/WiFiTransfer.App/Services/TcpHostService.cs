@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using System.Text;
 
 namespace WiFiTransfer.App.Services;
 
@@ -53,7 +54,7 @@ public sealed class TcpHostService : IAsyncDisposable
             {
                 using var idleTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 idleTimeout.CancelAfter(TimeSpan.FromSeconds(5));
-                var line = await reader.ReadLineAsync(idleTimeout.Token);
+                var line = await ReadProtocolLineAsync(reader, idleTimeout.Token);
                 if (string.IsNullOrWhiteSpace(line) || line.Length > 16 * 1024) return;
 
                 using var document = JsonDocument.Parse(line);
@@ -72,7 +73,7 @@ public sealed class TcpHostService : IAsyncDisposable
                     type = "WELCOME", protocolVersion = 1, server = "DroidShare-WiFi"
                 }));
 
-                line = await reader.ReadLineAsync(idleTimeout.Token);
+                line = await ReadProtocolLineAsync(reader, idleTimeout.Token);
                 if (string.IsNullOrWhiteSpace(line) || line.Length > 16 * 1024) return;
                 using var pingDocument = JsonDocument.Parse(line);
                 var pingRoot = pingDocument.RootElement;
@@ -89,6 +90,21 @@ public sealed class TcpHostService : IAsyncDisposable
                 // A malformed, idle, or disconnected diagnostic client must not stop the listener.
             }
         }
+    }
+
+    private static async Task<string?> ReadProtocolLineAsync(StreamReader reader, CancellationToken cancellationToken)
+    {
+        var line = new StringBuilder();
+        var buffer = new char[1];
+        while (line.Length <= 16 * 1024)
+        {
+            var count = await reader.ReadAsync(buffer.AsMemory(), cancellationToken);
+            if (count == 0) return line.Length == 0 ? null : line.ToString();
+            if (buffer[0] == '\\n') return line.ToString();
+            if (buffer[0] != '\\r') line.Append(buffer[0]);
+        }
+
+        throw new InvalidDataException("Protocol message exceeded 16 KiB.");
     }
 
     public ValueTask DisposeAsync()
