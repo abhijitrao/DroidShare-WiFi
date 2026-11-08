@@ -3,6 +3,24 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+val githubDevKeystorePath = System.getenv("ANDROID_DEV_KEYSTORE_PATH")
+val githubDevStorePassword = System.getenv("ANDROID_DEV_STORE_PASSWORD")
+val githubDevKeyAlias = System.getenv("ANDROID_DEV_KEY_ALIAS")
+val githubDevKeyPassword = System.getenv("ANDROID_DEV_KEY_PASSWORD")
+
+val githubDevSigningValues = listOf(
+    githubDevKeystorePath,
+    githubDevStorePassword,
+    githubDevKeyAlias,
+    githubDevKeyPassword
+)
+val useGithubDevSigning = githubDevSigningValues.all { !it.isNullOrBlank() }
+
+if (githubDevSigningValues.any { !it.isNullOrBlank() } && !useGithubDevSigning) {
+    throw GradleException("GitHub development signing is partially configured. Provide all ANDROID_DEV_* signing environment variables.")
+}
+
 android {
     namespace = "com.droidshare.wifi"
     compileSdk = 35
@@ -12,6 +30,23 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+    }
+    signingConfigs {
+        if (useGithubDevSigning) {
+            create("githubDevelopment") {
+                storeFile = file(githubDevKeystorePath!!)
+                storePassword = githubDevStorePassword!!
+                keyAlias = githubDevKeyAlias!!
+                keyPassword = githubDevKeyPassword!!
+            }
+        }
+    }
+    buildTypes {
+        getByName("debug") {
+            if (useGithubDevSigning) {
+                signingConfig = signingConfigs.getByName("githubDevelopment")
+            }
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
