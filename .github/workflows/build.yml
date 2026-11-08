@@ -106,14 +106,8 @@ jobs:
             exit /b 1
           )
 
-          echo Removing existing app (if installed): com.droidshare.wifi
-          "%ADB%" -s !SERIAL! uninstall com.droidshare.wifi
-          if errorlevel 1 (
-            echo Existing app not installed or uninstall returned non-zero; continuing with fresh install.
-          )
-
-          echo Installing fresh APK on !SERIAL!
-          "%ADB%" -s !SERIAL! install "%APK%"
+          echo Updating app on !SERIAL! (existing app data will be preserved if signatures match)
+          "%ADB%" -s !SERIAL! install -r "%APK%"
           if errorlevel 1 (
             echo ERROR: APK installation failed.
             exit /b 1
