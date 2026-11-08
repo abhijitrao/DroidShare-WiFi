@@ -50,7 +50,7 @@ jobs:
           echo "$ANDROID_DEV_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/droidshare-github-dev.jks"
       - name: Assemble debug APK
         env:
-          ANDROID_DEV_KEYSTORE_PATH: ${{ runner.temp }}/droidshare-github-dev.jks
+          ANDROID_DEV_KEYSTORE_PATH: ${{ secrets.ANDROID_DEV_KEYSTORE_BASE64 != '' && format('{0}/droidshare-github-dev.jks', runner.temp) || '' }}
           ANDROID_DEV_STORE_PASSWORD: ${{ secrets.ANDROID_DEV_STORE_PASSWORD }}
           ANDROID_DEV_KEY_ALIAS: ${{ secrets.ANDROID_DEV_KEY_ALIAS }}
           ANDROID_DEV_KEY_PASSWORD: ${{ secrets.ANDROID_DEV_KEY_PASSWORD }}
