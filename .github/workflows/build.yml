@@ -65,31 +65,51 @@ jobs:
           path: artifacts/android
 
       - name: Verify ADB device and install APK
-        shell: powershell
+        shell: cmd
         run: |
-          $adb = "C:\Users\droid\AppData\Local\Android\Sdk\platform-tools\adb.exe"
-          $apk = Join-Path $env:GITHUB_WORKSPACE "artifacts\android\app-debug.apk"
+          @echo off
+          setlocal EnableExtensions EnableDelayedExpansion
+          set "ADB=C:\Users\droid\AppData\Local\Android\Sdk\platform-tools\adb.exe"
+          set "APK=%GITHUB_WORKSPACE%\artifacts\android\app-debug.apk"
 
-          if (-not (Test-Path $adb)) {
-            throw "ADB not found at '$adb'. Check Android SDK platform-tools installation."
-          }
-          if (-not (Test-Path $apk)) {
-            throw "APK not found at '$apk'."
-          }
+          if not exist "%ADB%" (
+            echo ERROR: ADB not found at "%ADB%"
+            exit /b 1
+          )
+          if not exist "%APK%" (
+            echo ERROR: APK not found at "%APK%"
+            exit /b 1
+          )
 
-          & $adb start-server
-          $deviceLines = & $adb devices | Select-Object -Skip 1 | Where-Object { $_ -match '^\S+\s+device(\s|$)' }
-          if (@($deviceLines).Count -ne 1) {
-            & $adb devices -l
-            throw "Expected exactly one authorized ADB device, found $(@($deviceLines).Count)."
-          }
+          "%ADB%" start-server
+          if errorlevel 1 exit /b 1
 
-          $serial = ($deviceLines[0] -split '\s+')[0]
-          Write-Host "Installing APK on device: $serial"
-          & $adb -s $serial shell getprop ro.product.model
-          if ($LASTEXITCODE -ne 0) { throw "Unable to communicate with ADB device." }
+          set "SERIAL="
+          set /a COUNT=0
+          for /f "skip=1 tokens=1,2" %%A in ('"%ADB%" devices') do (
+            if "%%B"=="device" (
+              set "SERIAL=%%A"
+              set /a COUNT+=1
+            )
+          )
 
-          & $adb -s $serial install -r $apk
-          if ($LASTEXITCODE -ne 0) { throw "APK installation failed." }
+          if not "!COUNT!"=="1" (
+            "%ADB%" devices -l
+            echo ERROR: Expected exactly one authorized ADB device, found !COUNT!.
+            exit /b 1
+          )
 
-          Write-Host "APK installed successfully on $serial"
+          echo Installing APK on device: !SERIAL!
+          "%ADB%" -s !SERIAL! shell getprop ro.product.model
+          if errorlevel 1 (
+            echo ERROR: Unable to communicate with ADB device.
+            exit /b 1
+          )
+
+          "%ADB%" -s !SERIAL! install -r "%APK%"
+          if errorlevel 1 (
+            echo ERROR: APK installation failed.
+            exit /b 1
+          )
+
+          echo APK installed successfully on !SERIAL!
