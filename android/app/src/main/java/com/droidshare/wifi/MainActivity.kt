@@ -138,6 +138,7 @@ class MainActivity : ComponentActivity() {
             var tlsStatus by remember { mutableStateOf("Pairing has not been attempted.") }
             var connectedEndpoint by remember { mutableStateOf<Triple<String, Int, String>?>(null) }
             var pendingDownload by remember { mutableStateOf<Pair<RemoteShare, RemoteDirectoryEntry>?>(null) }
+            var selectedDownloadPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
             var pendingUpload by remember { mutableStateOf<RemoteShare?>(null) }
             var transferStatus by remember { mutableStateOf<String?>(null) }
             var transferBytes by remember { mutableStateOf(0L) }
@@ -205,6 +206,90 @@ class MainActivity : ComponentActivity() {
                             .onFailure { transferStatus = "Download failed: " + (it.localizedMessage ?: "Transfer error") }
                         busy = false
                     }
+                }
+            }
+
+            val downloadFolderLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.OpenDocumentTree()
+            ) { treeUri ->
+                val share = discoveredShares.value.firstOrNull { it.shareId == pendingDownload?.first?.shareId }
+                val endpoint = connectedEndpoint
+                val selected = share?.entries?.filter { entry ->
+                    !entry.isDirectory && selectedDownloadPaths.contains("\${share.shareId}|\${share.currentPath}|\${entry.name}")
+                }.orEmpty()
+                if (treeUri == null) {
+                    transferStatus = "Multi-file download cancelled."
+                } else if (share != null && endpoint != null && selected.isNotEmpty()) {
+                    runCatching {
+                        contentResolver.takePersistableUriPermission(
+                            treeUri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                        )
+                    }
+                    selectedDownloadPaths = emptySet()
+                    scope.launch {
+                        busy = true
+                        transferBytes = 0L
+                        transferTotal = selected.sumOf { it.size.coerceAtLeast(0L) }
+                        transferSpeed = 0L
+                        transferStatus = "Preparing \${selected.size} file(s)…"
+                        val transferStartedAt = SystemClock.elapsedRealtime()
+                        val result = withContext(Dispatchers.IO) {
+                            runCatching {
+                                val rootDocumentId = android.provider.DocumentsContract.getTreeDocumentId(treeUri)
+                                val rootDocumentUri = android.provider.DocumentsContract.buildDocumentUriUsingTree(treeUri, rootDocumentId)
+                                val existingNames = contentResolver.query(
+                                    android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, rootDocumentId),
+                                    arrayOf(android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+                                    null, null, null
+                                )?.use { cursor ->
+                                    val column = cursor.getColumnIndexOrThrow(android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                                    buildSet { while (cursor.moveToNext()) add(cursor.getString(column).orEmpty().lowercase()) }
+                                } ?: emptySet()
+                                var completedBytes = 0L
+                                var completedFiles = 0
+                                val skipped = mutableListOf<String>()
+                                selected.forEachIndexed { index, entry ->
+                                    require(!entry.name.contains('/') && !entry.name.contains('\\') &&
+                                        entry.name !in setOf(".", "..") && entry.name.isNotBlank()) {
+                                        "Windows returned an invalid file name."
+                                    }
+                                    if (existingNames.contains(entry.name.lowercase())) {
+                                        skipped.add(entry.name)
+                                    } else {
+                                        val destination = android.provider.DocumentsContract.createDocument(
+                                            contentResolver, rootDocumentUri, "application/octet-stream", entry.name
+                                        ) ?: throw IllegalStateException("Could not create destination for \${entry.name}.")
+                                        try {
+                                            val relativePath = if (share.currentPath.isBlank()) entry.name
+                                                else share.currentPath + "/" + entry.name
+                                            SecureTlsProbe.downloadFile(
+                                                this@MainActivity, endpoint.first, endpoint.second, endpoint.third,
+                                                share.shareId, relativePath, destination
+                                            ) { received, _ ->
+                                                transferBytes = completedBytes + received
+                                                val elapsed = (SystemClock.elapsedRealtime() - transferStartedAt).coerceAtLeast(1L)
+                                                transferSpeed = transferBytes * 1000L / elapsed
+                                                transferStatus = "Downloading \${index + 1}/\${selected.size} · \${entry.name}"
+                                            }
+                                            completedBytes += entry.size.coerceAtLeast(0L)
+                                            completedFiles++
+                                        } catch (error: Exception) {
+                                            runCatching { android.provider.DocumentsContract.deleteDocument(contentResolver, destination) }
+                                            throw error
+                                        }
+                                    }
+                                }
+                                "Downloaded $completedFiles/\${selected.size} file(s) · SHA-256 verified" +
+                                    if (skipped.isEmpty()) "" else " · Skipped existing: \${skipped.joinToString()}"
+                            }
+                        }
+                        result.onSuccess { transferStatus = it }
+                            .onFailure { transferStatus = "Download queue stopped: " + (it.localizedMessage ?: "Transfer error") }
+                        busy = false
+                    }
+                } else {
+                    transferStatus = "Select at least one file from the current folder."
                 }
             }
 
@@ -637,6 +722,22 @@ class MainActivity : ComponentActivity() {
                                         } else {
                                             Text("Shared folder", color = muted, style = MaterialTheme.typography.labelSmall)
                                         }
+                                        val selectedCount = share.entries.count { entry ->
+                                            !entry.isDirectory && selectedDownloadPaths.contains("\${share.shareId}|\${share.currentPath}|\${entry.name}")
+                                        }
+                                        if (selectedCount > 0) {
+                                            Button(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                enabled = !busy && connectedEndpoint != null,
+                                                shape = RoundedCornerShape(12.dp),
+                                                onClick = {
+                                                    pendingDownload = share to share.entries.first { entry ->
+                                                        !entry.isDirectory && selectedDownloadPaths.contains("\${share.shareId}|\${share.currentPath}|\${entry.name}")
+                                                    }
+                                                    downloadFolderLauncher.launch(null)
+                                                }
+                                            ) { Text("DOWNLOAD SELECTED ($selectedCount)", color = androidx.compose.ui.graphics.Color.White) }
+                                        }
                                         if (share.entries.isEmpty()) {
                                             Text("This folder is empty.", color = muted,
                                                 style = MaterialTheme.typography.bodySmall,
@@ -663,6 +764,15 @@ class MainActivity : ComponentActivity() {
                                                         Text("OPEN  ›", color = violet,
                                                             style = MaterialTheme.typography.labelSmall)
                                                     } else {
+                                                        val selectionKey = "\${share.shareId}|\${share.currentPath}|\${entry.name}"
+                                                        Checkbox(
+                                                            checked = selectedDownloadPaths.contains(selectionKey),
+                                                            enabled = !busy,
+                                                            onCheckedChange = { checked ->
+                                                                selectedDownloadPaths = if (checked) selectedDownloadPaths + selectionKey
+                                                                    else selectedDownloadPaths - selectionKey
+                                                            }
+                                                        )
                                                         Column(horizontalAlignment = androidx.compose.ui.Alignment.End) {
                                                             Text(formatFileSize(entry.size), color = muted,
                                                                 style = MaterialTheme.typography.labelSmall)
