@@ -51,9 +51,19 @@ The scanner is bundled and works offline; camera permission is requested by the 
 6. Repeat with one destination filename already present; confirm that file is skipped and never overwritten while the remaining files complete.
 7. Interrupt network connectivity during a file; confirm the queue stops, the incomplete destination document is removed when the provider permits deletion, and completed earlier files remain intact.
 
+## Transfer controls and history test
+1. Start a large download (for example, a file of at least 500 MB) or a multi-file queue.
+2. Tap **Pause** while bytes are transferring. Confirm the progress stops advancing after the current bounded I/O chunk.
+3. Tap **Resume** and confirm the same file continues on the same authenticated TLS session and completes with SHA-256 verification.
+4. Start another large transfer and tap **Cancel**. Confirm the operation stops at the next I/O checkpoint, the incomplete Android destination is removed when the storage provider permits it, and the Windows upload staging file is not finalized.
+5. Repeat cancellation during a multi-file queue. Confirm files completed before cancellation remain, the current partial file is cleaned up, and later queue items do not start.
+6. Verify completed, cancelled, and failed jobs appear in **Transfer History** with direction, name, byte counts, and timestamp.
+7. Force-close Android while a transfer is active, reopen it, and confirm the stale history item is marked **Interrupted**. Do not expect automatic byte-offset resume after process death or network loss in this version.
+8. Clear history and confirm the list is removed without affecting transferred files.
+
 ## Current limitations and safety
 - Pairing stores public identity material. Verify the Windows paired-device manager lists the new Android device and can revoke it. Android-side trust management, transfer authorization, and file transfer are not implemented. To test recovery, simulate a lost final `PAIR_APPROVED` response after Windows persists the trust record, then retry with the same Android installation/key and approve again; Windows must accept the identical key and reject a changed key. No file access is enabled.
 - The existing TCP diagnostic is plaintext and unauthenticated. It does not send files.
 - Discovery currently uses IPv4 limited broadcast; some routers/hotspots block client broadcast or client-to-client traffic.
-- Transfer cancellation, pause/resume, persistent transfer history, delete, and DLNA remain pending. Multi-file uploads and sequential multi-file downloads are implemented but require physical-device validation.
+- Durable resume after process death or network loss, delete, and DLNA remain pending. Pause/resume is in-session only and requires the TLS session to remain alive; Windows currently applies a 30-minute session timeout. Multi-file queues and transfer controls require physical-device validation.
 - Do not expose the diagnostic listener to an untrusted/public network.
