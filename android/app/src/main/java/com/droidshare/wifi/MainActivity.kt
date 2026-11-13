@@ -697,11 +697,13 @@ class MainActivity : ComponentActivity() {
                                                         if (control.isPaused()) {
                                                             control.resume()
                                                             transferStatus = "Resuming transfer…"
-                                                            saveTransferHistory(activeTransferId!!, "Transfer", "Active transfer", "Running")
+                                                            historyStore.updateStatus(activeTransferId!!, "Running", transferBytes, transferTotal)
+                                                            transferHistory = historyStore.all()
                                                         } else {
                                                             control.pause()
                                                             transferStatus = "Paused · tap Resume to continue"
-                                                            saveTransferHistory(activeTransferId!!, "Transfer", "Active transfer", "Paused")
+                                                            historyStore.updateStatus(activeTransferId!!, "Paused", transferBytes, transferTotal)
+                                                            transferHistory = historyStore.all()
                                                         }
                                                     }
                                                 }
