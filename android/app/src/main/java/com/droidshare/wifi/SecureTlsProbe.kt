@@ -413,6 +413,7 @@ object SecureTlsProbe {
         shareId: String,
         sources: List<UploadSource>,
         directories: List<String> = emptyList(),
+        control: TransferControl = TransferControl(),
         onProgress: (Int, Long, Long, Long, Long) -> Unit
     ): List<String> {
         require(shareId.matches(Regex("^[a-fA-F0-9-]{36}$"))) { "Invalid shared folder ID." }
@@ -439,6 +440,7 @@ object SecureTlsProbe {
             context.contentResolver.openInputStream(source.uri)?.use { input ->
                 val buffer = ByteArray(256 * 1024)
                 while (true) {
+                    control.checkpoint()
                     val count = input.read(buffer)
                     if (count < 0) break
                     counted += count
@@ -471,6 +473,7 @@ object SecureTlsProbe {
             }
 
             safeDirectories.forEach { directory ->
+                control.checkpoint()
                 writeLine(tls, JSONObject().put("type", "CREATE_DIRECTORY").put("protocolVersion", 1)
                     .put("shareId", shareId).put("path", directory))
                 val response = JSONObject(readLine(tls.inputStream))
@@ -487,6 +490,7 @@ object SecureTlsProbe {
             }
 
             prepared.mapIndexed { index, file ->
+                control.checkpoint()
                 writeLine(tls, JSONObject().put("type", "UPLOAD_FILE").put("protocolVersion", 1)
                     .put("shareId", shareId).put("path", file.path)
                     .put("size", file.size).put("sha256", file.hash))
@@ -509,6 +513,7 @@ object SecureTlsProbe {
                     val buffer = ByteArray(chunkSize)
                     val output = tls.outputStream
                     while (sent < file.size) {
+                        control.checkpoint()
                         val count = input.read(buffer, 0, minOf(buffer.size.toLong(), file.size - sent).toInt())
                         check(count > 0) { "Selected file ended before upload completed: ${file.path}" }
                         output.write(buffer, 0, count)
@@ -560,6 +565,7 @@ object SecureTlsProbe {
         shareId: String,
         relativePath: String,
         destination: Uri,
+        control: TransferControl = TransferControl(),
         onProgress: (Long, Long) -> Unit
     ): String {
         require(windowsDeviceId.matches(Regex("^[a-f0-9]{32}$"))) { "Invalid Windows device identity." }
@@ -658,6 +664,7 @@ object SecureTlsProbe {
                     ?: throw IllegalStateException("Android could not open the selected destination.")
                 output.use { target ->
                     while (received < expectedSize) {
+                        control.checkpoint()
                         val requested = minOf(buffer.size.toLong(), expectedSize - received).toInt()
                         val count = input.read(buffer, 0, requested)
                         check(count > 0) { "Windows closed the connection before the complete file arrived." }
