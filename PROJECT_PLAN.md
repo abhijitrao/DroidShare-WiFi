@@ -99,9 +99,10 @@ See docs/ARCHITECTURE.md, docs/SECURITY.md, and shared/protocol/PROTOCOL.md.
 - [x] Add nested folder navigation with clickable breadcrumbs and back navigation on Android.
 - [x] Single-file Windows-to-Android download over authenticated TLS using fixed-length raw binary streaming, bounded 256 KiB buffers, Android destination picker, live progress/speed, and SHA-256 verification.
 - [x] Single-file Android-to-Windows upload to explicitly Write-enabled Windows shares, using a SAF picker, bounded raw TLS streaming, temporary-file staging, no-overwrite finalization, progress/speed, and SHA-256 verification.
-- [ ] Multi-file queue, cancellation, pause/resume, and transfer history.
+- [x] Sequential multi-file upload and download queues with per-file progress, bounded streaming, and SHA-256 verification.
+- [ ] Transfer cancellation, pause/resume, and persistent transfer history.
 - [x] Android Disconnect & Forget action with authenticated Windows-side self-revocation and local pin removal.
-**Exit:** repeatable transfers with bounded memory. Trusted Android devices can browse Windows shares and transfer one file at a time in either direction with SHA-256 verification. Multi-file queue, cancellation/pause/resume, delete, and media streaming remain future work. Android now supports a confirmed Disconnect & Forget action that revokes its identity on Windows and removes the local pin only after acknowledgement.
+**Exit:** repeatable transfers with bounded memory. Trusted Android devices can browse Windows shares and transfer one file at a time in either direction with SHA-256 verification. Multi-file upload and download queues are implemented. Cancellation, pause/resume, persistent transfer history, delete, and media streaming remain future work. Android now supports a confirmed Disconnect & Forget action that revokes its identity on Windows and removes the local pin only after acknowledgement.
 
 ### Phase 3 — Folder transfer
 - Recursive manifest, directory creation, conflict policy, path validation.
