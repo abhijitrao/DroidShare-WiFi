@@ -685,6 +685,37 @@ class MainActivity : ComponentActivity() {
                                     }
                                     Spacer(Modifier.height(8.dp))
                                     Text(transferStatus ?: "", color = ink, style = MaterialTheme.typography.bodyMedium)
+                                    if (busy && transferControl != null && activeTransferId != null) {
+                                        Spacer(Modifier.height(12.dp))
+                                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                            modifier = Modifier.fillMaxWidth()) {
+                                            OutlinedButton(
+                                                modifier = Modifier.weight(1f),
+                                                onClick = {
+                                                    val control = transferControl
+                                                    if (control != null) {
+                                                        if (control.isPaused()) {
+                                                            control.resume()
+                                                            transferStatus = "Resuming transfer…"
+                                                            saveTransferHistory(activeTransferId!!, "Transfer", "Active transfer", "Running")
+                                                        } else {
+                                                            control.pause()
+                                                            transferStatus = "Paused · tap Resume to continue"
+                                                            saveTransferHistory(activeTransferId!!, "Transfer", "Active transfer", "Paused")
+                                                        }
+                                                    }
+                                                }
+                                            ) { Text(if (transferControl?.isPaused() == true) "RESUME" else "PAUSE") }
+                                            OutlinedButton(
+                                                modifier = Modifier.weight(1f),
+                                                onClick = {
+                                                    transferControl?.cancel()
+                                                    transferStatus = "Cancelling after the current I/O chunk…"
+                                                },
+                                                colors = ButtonDefaults.outlinedButtonColors(contentColor = androidx.compose.ui.graphics.Color(0xFFB45353))
+                                            ) { Text("CANCEL") }
+                                        }
+                                    }
                                     if (busy && transferTotal > 0L) {
                                         Spacer(Modifier.height(10.dp))
                                         LinearProgressIndicator(
@@ -694,6 +725,49 @@ class MainActivity : ComponentActivity() {
                                         Spacer(Modifier.height(6.dp))
                                         Text("${formatFileSize(transferBytes)} of ${formatFileSize(transferTotal)} · ${formatFileSize(transferSpeed)}/s",
                                             color = muted, style = MaterialTheme.typography.labelSmall)
+                                    }
+                                }
+                            }
+                        }
+
+                        if (transferHistory.isNotEmpty()) {
+                            Spacer(Modifier.height(20.dp))
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White)
+                            ) {
+                                Column(Modifier.padding(16.dp)) {
+                                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                                        Text("TRANSFER HISTORY", color = muted,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                                        Spacer(Modifier.weight(1f))
+                                        TextButton(onClick = {
+                                            historyStore.clear()
+                                            transferHistory = emptyList()
+                                        }) { Text("CLEAR") }
+                                    }
+                                    transferHistory.take(20).forEach { item ->
+                                        Divider(color = androidx.compose.ui.graphics.Color(0xFFE8EAF0))
+                                        Column(Modifier.padding(vertical = 9.dp)) {
+                                            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                                                Text(item.direction.uppercase(), color = violet,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                                                Spacer(Modifier.weight(1f))
+                                                Text(item.status, color = when (item.status) {
+                                                    "Completed" -> green
+                                                    "Failed", "Cancelled" -> androidx.compose.ui.graphics.Color(0xFFB45353)
+                                                    "Paused" -> androidx.compose.ui.graphics.Color(0xFFB7791F)
+                                                    else -> muted
+                                                }, style = MaterialTheme.typography.labelSmall)
+                                            }
+                                            Text(item.name, color = ink, style = MaterialTheme.typography.bodySmall,
+                                                maxLines = 1)
+                                            Text("\${formatFileSize(item.bytes)} / \${formatFileSize(item.totalBytes)} · \${item.updatedAt}",
+                                                color = muted, style = MaterialTheme.typography.labelSmall)
+                                        }
                                     }
                                 }
                             }
