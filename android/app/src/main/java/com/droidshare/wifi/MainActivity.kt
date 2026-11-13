@@ -144,7 +144,15 @@ class MainActivity : ComponentActivity() {
             var transferBytes by remember { mutableStateOf(0L) }
             var transferTotal by remember { mutableStateOf(0L) }
             var transferSpeed by remember { mutableStateOf(0L) }
+            var transferControl by remember { mutableStateOf<TransferControl?>(null) }
+            var activeTransferId by remember { mutableStateOf<String?>(null) }
+            val historyStore = remember { TransferHistoryStore(this@MainActivity) }
+            var transferHistory by remember { mutableStateOf(historyStore.all()) }
             val scope = rememberCoroutineScope()
+            fun saveTransferHistory(id: String, direction: String, name: String, state: String) {
+                historyStore.record(id, direction, name, state, transferBytes, transferTotal)
+                transferHistory = historyStore.all()
+            }
             fun browseShare(share: RemoteShare, path: String) {
                 val endpoint = connectedEndpoint ?: return
                 scope.launch {
@@ -182,10 +190,15 @@ class MainActivity : ComponentActivity() {
                 } else if (pending != null && endpoint != null) {
                     val (share, entry) = pending
                     val relativePath = if (share.currentPath.isBlank()) entry.name else share.currentPath + "/" + entry.name
+                    val control = TransferControl()
+                    val historyId = TransferHistoryStore.newId()
+                    transferControl = control
+                    activeTransferId = historyId
                     scope.launch {
                         busy = true
                         transferBytes = 0L
                         transferTotal = entry.size
+                        saveTransferHistory(historyId, "Download", entry.name, "Running")
                         transferSpeed = 0L
                         transferStatus = "Preparing secure download…"
                         val transferStartedAt = SystemClock.elapsedRealtime()
@@ -193,18 +206,27 @@ class MainActivity : ComponentActivity() {
                             runCatching {
                                 SecureTlsProbe.downloadFile(
                                     this@MainActivity, endpoint.first, endpoint.second, endpoint.third,
-                                    share.shareId, relativePath, destination
+                                    share.shareId, relativePath, destination, control
                                 ) { received, total ->
                                     transferBytes = received
                                     transferTotal = total
                                     val elapsed = (SystemClock.elapsedRealtime() - transferStartedAt).coerceAtLeast(1L)
                                     transferSpeed = received * 1000L / elapsed
+                                    saveTransferHistory(historyId, "Download", entry.name, "Running")
                                 }
                             }
                         }
-                        result.onSuccess { transferStatus = it }
-                            .onFailure { transferStatus = "Download failed: " + (it.localizedMessage ?: "Transfer error") }
+                        result.onSuccess {
+                            transferStatus = it
+                            saveTransferHistory(historyId, "Download", entry.name, "Completed")
+                        }.onFailure {
+                            val state = if (control.isCancelled()) "Cancelled" else "Failed"
+                            saveTransferHistory(historyId, "Download", entry.name, state)
+                            transferStatus = "Download ${state.lowercase()}: " + (it.localizedMessage ?: "Transfer error")
+                        }
                         busy = false
+                        transferControl = null
+                        activeTransferId = null
                     }
                 }
             }
@@ -227,12 +249,17 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     selectedDownloadPaths = emptySet()
+                    val control = TransferControl()
+                    val historyId = TransferHistoryStore.newId()
+                    transferControl = control
+                    activeTransferId = historyId
                     scope.launch {
                         busy = true
                         transferBytes = 0L
                         transferTotal = selected.sumOf { it.size.coerceAtLeast(0L) }
                         transferSpeed = 0L
                         transferStatus = "Preparing ${selected.size} file(s)…"
+                        saveTransferHistory(historyId, "Download", "${selected.size} selected files", "Running")
                         val transferStartedAt = SystemClock.elapsedRealtime()
                         val result = withContext(Dispatchers.IO) {
                             runCatching {
@@ -265,12 +292,13 @@ class MainActivity : ComponentActivity() {
                                                 else share.currentPath + "/" + entry.name
                                             SecureTlsProbe.downloadFile(
                                                 this@MainActivity, endpoint.first, endpoint.second, endpoint.third,
-                                                share.shareId, relativePath, destination
+                                                share.shareId, relativePath, destination, control
                                             ) { received, _ ->
                                                 transferBytes = completedBytes + received
                                                 val elapsed = (SystemClock.elapsedRealtime() - transferStartedAt).coerceAtLeast(1L)
                                                 transferSpeed = transferBytes * 1000L / elapsed
                                                 transferStatus = "Downloading ${index + 1}/${selected.size} · ${entry.name}"
+                                                saveTransferHistory(historyId, "Download", "${selected.size} selected files", "Running")
                                             }
                                             completedBytes += entry.size.coerceAtLeast(0L)
                                             completedFiles++
@@ -284,9 +312,17 @@ class MainActivity : ComponentActivity() {
                                     if (skipped.isEmpty()) "" else " · Skipped existing: ${skipped.joinToString()}"
                             }
                         }
-                        result.onSuccess { transferStatus = it }
-                            .onFailure { transferStatus = "Download queue stopped: " + (it.localizedMessage ?: "Transfer error") }
+                        result.onSuccess {
+                            transferStatus = it
+                            saveTransferHistory(historyId, "Download", "${selected.size} selected files", "Completed")
+                        }.onFailure {
+                            val state = if (control.isCancelled()) "Cancelled" else "Failed"
+                            saveTransferHistory(historyId, "Download", "${selected.size} selected files", state)
+                            transferStatus = "Download queue ${state.lowercase()}: " + (it.localizedMessage ?: "Transfer error")
+                        }
                         busy = false
+                        transferControl = null
+                        activeTransferId = null
                     }
                 } else {
                     transferStatus = "Select at least one file from the current folder."
@@ -323,34 +359,45 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     sources.onSuccess { uploadSources ->
+                        val control = TransferControl()
+                        val historyId = TransferHistoryStore.newId()
+                        transferControl = control
+                        activeTransferId = historyId
                         scope.launch {
                             busy = true
                             transferBytes = 0L
                             transferTotal = 0L
                             transferSpeed = 0L
                             transferStatus = "Preparing ${uploadSources.size} file(s)…"
+                            saveTransferHistory(historyId, "Upload", "${uploadSources.size} selected files", "Running")
                             val transferStartedAt = SystemClock.elapsedRealtime()
                             val result = withContext(Dispatchers.IO) {
                                 runCatching {
                                     SecureTlsProbe.uploadFiles(
                                         this@MainActivity, endpoint.first, endpoint.second, endpoint.third,
-                                        share.shareId, uploadSources
+                                        share.shareId, uploadSources, control = control
                                     ) { index, fileSent, fileTotal, totalSent, totalBytes ->
                                         transferBytes = totalSent
                                         transferTotal = totalBytes
                                         val elapsed = (SystemClock.elapsedRealtime() - transferStartedAt).coerceAtLeast(1L)
                                         transferSpeed = totalSent * 1000L / elapsed
                                         transferStatus = "Uploading ${index + 1}/${uploadSources.size} · ${fileSent} / ${fileTotal} bytes"
+                                        saveTransferHistory(historyId, "Upload", "${uploadSources.size} selected files", "Running")
                                     }
                                 }
                             }
                             result.onSuccess { messages ->
                                 transferStatus = "Uploaded ${messages.size} file(s) · SHA-256 verified"
+                                saveTransferHistory(historyId, "Upload", "${uploadSources.size} selected files", "Completed")
                                 browseShare(share, share.currentPath)
                             }.onFailure {
-                                transferStatus = "Upload failed: " + (it.localizedMessage ?: "Transfer error")
+                                val state = if (control.isCancelled()) "Cancelled" else "Failed"
+                                saveTransferHistory(historyId, "Upload", "${uploadSources.size} selected files", state)
+                                transferStatus = "Upload ${state.lowercase()}: " + (it.localizedMessage ?: "Transfer error")
                             }
                             busy = false
+                            transferControl = null
+                            activeTransferId = null
                         }
                     }.onFailure {
                         transferStatus = "Could not prepare upload: " + (it.localizedMessage ?: "Invalid file")
@@ -372,19 +419,24 @@ class MainActivity : ComponentActivity() {
                             treeUri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
                         )
                     }
+                    val control = TransferControl()
+                    val historyId = TransferHistoryStore.newId()
+                    transferControl = control
+                    activeTransferId = historyId
                     scope.launch {
                         busy = true
                         transferBytes = 0L
                         transferTotal = 0L
                         transferSpeed = 0L
                         transferStatus = "Scanning selected folder…"
+                        saveTransferHistory(historyId, "Upload", "Selected folder", "Running")
                         val transferStartedAt = SystemClock.elapsedRealtime()
                         val result = withContext(Dispatchers.IO) {
                             runCatching {
                                 val (files, directories) = collectFolderUploadSources(treeUri, share.currentPath)
                                 SecureTlsProbe.uploadFiles(
                                     this@MainActivity, endpoint.first, endpoint.second, endpoint.third,
-                                    share.shareId, files, directories
+                                    share.shareId, files, directories, control
                                 ) { index, fileSent, fileTotal, totalSent, totalBytes ->
                                     transferBytes = totalSent
                                     transferTotal = totalBytes
@@ -401,11 +453,16 @@ class MainActivity : ComponentActivity() {
                         }
                         result.onSuccess {
                             transferStatus = it
+                            saveTransferHistory(historyId, "Upload", "Selected folder", "Completed")
                             browseShare(share, share.currentPath)
                         }.onFailure {
-                            transferStatus = "Folder upload failed: " + (it.localizedMessage ?: "Transfer error")
+                            val state = if (control.isCancelled()) "Cancelled" else "Failed"
+                            saveTransferHistory(historyId, "Upload", "Selected folder", state)
+                            transferStatus = "Folder upload ${state.lowercase()}: " + (it.localizedMessage ?: "Transfer error")
                         }
                         busy = false
+                        transferControl = null
+                        activeTransferId = null
                     }
                 }
             }
