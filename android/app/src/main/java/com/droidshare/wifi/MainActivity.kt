@@ -146,7 +146,9 @@ class MainActivity : ComponentActivity() {
             var transferSpeed by remember { mutableStateOf(0L) }
             var transferControl by remember { mutableStateOf<TransferControl?>(null) }
             var activeTransferId by remember { mutableStateOf<String?>(null) }
-            val historyStore = remember { TransferHistoryStore(this@MainActivity) }
+            val historyStore = remember {
+                TransferHistoryStore(this@MainActivity).also { it.recoverInterrupted() }
+            }
             var transferHistory by remember { mutableStateOf(historyStore.all()) }
             val scope = rememberCoroutineScope()
             fun saveTransferHistory(id: String, direction: String, name: String, state: String) {
