@@ -42,9 +42,18 @@ The scanner is bundled and works offline; camera permission is requested by the 
 11. Refresh the QR while a pairing approval dialog is open; after approval, confirm the replaced nonce cannot complete pairing.
 12. Repeat with a hotspot topology where the hotspot host permits client-to-client communication.
 
+## Multi-file download queue test
+1. Pair Android with Windows and configure a Windows share with Read permission.
+2. Open a folder containing at least three files of different sizes on Android.
+3. Select two or more file checkboxes and tap **Download selected**.
+4. Choose a destination folder through the Android system folder picker.
+5. Confirm files download sequentially, per-file status advances, aggregate progress/speed updates, and each file reports SHA-256 verification.
+6. Repeat with one destination filename already present; confirm that file is skipped and never overwritten while the remaining files complete.
+7. Interrupt network connectivity during a file; confirm the queue stops, the incomplete destination document is removed when the provider permits deletion, and completed earlier files remain intact.
+
 ## Current limitations and safety
 - Pairing stores public identity material. Verify the Windows paired-device manager lists the new Android device and can revoke it. Android-side trust management, transfer authorization, and file transfer are not implemented. To test recovery, simulate a lost final `PAIR_APPROVED` response after Windows persists the trust record, then retry with the same Android installation/key and approve again; Windows must accept the identical key and reject a changed key. No file access is enabled.
 - The existing TCP diagnostic is plaintext and unauthenticated. It does not send files.
 - Discovery currently uses IPv4 limited broadcast; some routers/hotspots block client broadcast or client-to-client traffic.
-- Android-side trust management, recovery from a lost final response, transfer, resume, and DLNA remain pending.
+- Transfer cancellation, pause/resume, persistent transfer history, delete, and DLNA remain pending. Multi-file uploads and sequential multi-file downloads are implemented but require physical-device validation.
 - Do not expose the diagnostic listener to an untrusted/public network.
