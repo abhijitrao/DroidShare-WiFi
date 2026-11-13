@@ -416,6 +416,7 @@ object SecureTlsProbe {
         control: TransferControl = TransferControl(),
         onProgress: (Int, Long, Long, Long, Long) -> Unit
     ): List<String> {
+        control.checkpoint()
         require(shareId.matches(Regex("^[a-fA-F0-9-]{36}$"))) { "Invalid shared folder ID." }
         require(sources.isNotEmpty() || directories.isNotEmpty()) { "Select files or a folder to upload." }
         require(sources.size <= 1000) { "A single upload batch is limited to 1,000 files." }
@@ -568,6 +569,7 @@ object SecureTlsProbe {
         control: TransferControl = TransferControl(),
         onProgress: (Long, Long) -> Unit
     ): String {
+        control.checkpoint()
         require(windowsDeviceId.matches(Regex("^[a-f0-9]{32}$"))) { "Invalid Windows device identity." }
         require(shareId.matches(Regex("^[a-fA-F0-9-]{36}$"))) { "Invalid shared folder ID." }
         require(relativePath.isNotBlank() && relativePath.length <= 2048 &&
