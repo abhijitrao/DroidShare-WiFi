@@ -215,7 +215,7 @@ class MainActivity : ComponentActivity() {
                 val share = discoveredShares.value.firstOrNull { it.shareId == pendingDownload?.first?.shareId }
                 val endpoint = connectedEndpoint
                 val selected = share?.entries?.filter { entry ->
-                    !entry.isDirectory && selectedDownloadPaths.contains("\${share.shareId}|\${share.currentPath}|\${entry.name}")
+                    !entry.isDirectory && selectedDownloadPaths.contains("${share.shareId}|${share.currentPath}|${entry.name}")
                 }.orEmpty()
                 if (treeUri == null) {
                     transferStatus = "Multi-file download cancelled."
@@ -232,7 +232,7 @@ class MainActivity : ComponentActivity() {
                         transferBytes = 0L
                         transferTotal = selected.sumOf { it.size.coerceAtLeast(0L) }
                         transferSpeed = 0L
-                        transferStatus = "Preparing \${selected.size} file(s)…"
+                        transferStatus = "Preparing ${selected.size} file(s)…"
                         val transferStartedAt = SystemClock.elapsedRealtime()
                         val result = withContext(Dispatchers.IO) {
                             runCatching {
@@ -259,7 +259,7 @@ class MainActivity : ComponentActivity() {
                                     } else {
                                         val destination = android.provider.DocumentsContract.createDocument(
                                             contentResolver, rootDocumentUri, "application/octet-stream", entry.name
-                                        ) ?: throw IllegalStateException("Could not create destination for \${entry.name}.")
+                                        ) ?: throw IllegalStateException("Could not create destination for ${entry.name}.")
                                         try {
                                             val relativePath = if (share.currentPath.isBlank()) entry.name
                                                 else share.currentPath + "/" + entry.name
@@ -270,7 +270,7 @@ class MainActivity : ComponentActivity() {
                                                 transferBytes = completedBytes + received
                                                 val elapsed = (SystemClock.elapsedRealtime() - transferStartedAt).coerceAtLeast(1L)
                                                 transferSpeed = transferBytes * 1000L / elapsed
-                                                transferStatus = "Downloading \${index + 1}/\${selected.size} · \${entry.name}"
+                                                transferStatus = "Downloading ${index + 1}/${selected.size} · ${entry.name}"
                                             }
                                             completedBytes += entry.size.coerceAtLeast(0L)
                                             completedFiles++
@@ -280,8 +280,8 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 }
-                                "Downloaded $completedFiles/\${selected.size} file(s) · SHA-256 verified" +
-                                    if (skipped.isEmpty()) "" else " · Skipped existing: \${skipped.joinToString()}"
+                                "Downloaded $completedFiles/${selected.size} file(s) · SHA-256 verified" +
+                                    if (skipped.isEmpty()) "" else " · Skipped existing: ${skipped.joinToString()}"
                             }
                         }
                         result.onSuccess { transferStatus = it }
@@ -723,7 +723,7 @@ class MainActivity : ComponentActivity() {
                                             Text("Shared folder", color = muted, style = MaterialTheme.typography.labelSmall)
                                         }
                                         val selectedCount = share.entries.count { entry ->
-                                            !entry.isDirectory && selectedDownloadPaths.contains("\${share.shareId}|\${share.currentPath}|\${entry.name}")
+                                            !entry.isDirectory && selectedDownloadPaths.contains("${share.shareId}|${share.currentPath}|${entry.name}")
                                         }
                                         if (selectedCount > 0) {
                                             Button(
@@ -732,7 +732,7 @@ class MainActivity : ComponentActivity() {
                                                 shape = RoundedCornerShape(12.dp),
                                                 onClick = {
                                                     pendingDownload = share to share.entries.first { entry ->
-                                                        !entry.isDirectory && selectedDownloadPaths.contains("\${share.shareId}|\${share.currentPath}|\${entry.name}")
+                                                        !entry.isDirectory && selectedDownloadPaths.contains("${share.shareId}|${share.currentPath}|${entry.name}")
                                                     }
                                                     downloadFolderLauncher.launch(null)
                                                 }
@@ -764,7 +764,7 @@ class MainActivity : ComponentActivity() {
                                                         Text("OPEN  ›", color = violet,
                                                             style = MaterialTheme.typography.labelSmall)
                                                     } else {
-                                                        val selectionKey = "\${share.shareId}|\${share.currentPath}|\${entry.name}"
+                                                        val selectionKey = "${share.shareId}|${share.currentPath}|${entry.name}"
                                                         Checkbox(
                                                             checked = selectedDownloadPaths.contains(selectionKey),
                                                             enabled = !busy,
