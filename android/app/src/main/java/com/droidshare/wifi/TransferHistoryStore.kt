@@ -61,6 +61,13 @@ class TransferHistoryStore(context: Context) {
     }
 
     @Synchronized
+    fun recoverInterrupted() {
+        all().filter { it.status == "Running" || it.status == "Paused" }.forEach { entry ->
+            record(entry.id, entry.direction, entry.name, "Interrupted", entry.bytes, entry.totalBytes)
+        }
+    }
+
+    @Synchronized
     fun updateStatus(id: String, status: String, bytes: Long, totalBytes: Long) {
         val entry = all().firstOrNull { it.id == id } ?: return
         record(id, entry.direction, entry.name, status, bytes, totalBytes)
