@@ -61,6 +61,12 @@ class TransferHistoryStore(context: Context) {
     }
 
     @Synchronized
+    fun updateStatus(id: String, status: String, bytes: Long, totalBytes: Long) {
+        val entry = all().firstOrNull { it.id == id } ?: return
+        record(id, entry.direction, entry.name, status, bytes, totalBytes)
+    }
+
+    @Synchronized
     fun clear() {
         preferences.edit().remove("entries").apply()
     }
