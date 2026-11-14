@@ -91,9 +91,29 @@ jobs:
           & $adb start-server
           if ($LASTEXITCODE -ne 0) { throw 'Unable to start ADB server.' }
 
-          # The wireless-debugging connect port can change after a phone restart.
-          # Discover the current _adb-tls-connect._tcp endpoint through mDNS.
+          # Reuse an already-connected device first. The ADB connect port can
+          # change after reboot, so use mDNS only when no device is connected.
           $serial = $null
+          $connected = @(& $adb devices | Select-Object -Skip 1 | Where-Object { "$_".Trim() -match '^\S+\s+device
+          Write-Host "Installing APK on $serial"
+          & $adb -s $serial shell getprop ro.product.model
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to communicate with the Android device.' }
+
+          & $adb -s $serial install -r $apk
+          if ($LASTEXITCODE -ne 0) { throw 'APK installation failed.' }
+
+          Write-Host "APK installed successfully on $serial"
+ })
+          if ($connected.Count -eq 1) {
+            $serial = ("$($connected[0])".Trim() -split '\s+')[0]
+            Write-Host "Using already-connected ADB device: $serial"
+          }
+          elseif ($connected.Count -gt 1) {
+            & $adb devices -l
+            throw "Expected one connected ADB device, found $($connected.Count). Disconnect extra devices."
+          }
+
+          # If no device is connected, discover the current wireless endpoint.
           for ($attempt = 1; $attempt -le 24 -and -not $serial; $attempt++) {
             Write-Host "Searching for paired wireless Android device (attempt $attempt/24)..."
             $services = & $adb mdns services 2>&1
@@ -114,7 +134,7 @@ jobs:
           if (-not $serial) {
             & $adb mdns services
             & $adb devices -l
-            throw 'No paired wireless ADB device discovered. Check that Wireless debugging is ON and the phone and laptop are on the same Wi-Fi network.'
+            throw 'No connected or discoverable paired wireless ADB device found. Check Wireless debugging, mDNS availability, and that both devices are on the same Wi-Fi network.'
           }
 
           Write-Host "Installing APK on $serial"
