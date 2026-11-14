@@ -79,7 +79,7 @@ jobs:
           path: artifacts/android
 
       - name: Discover wireless ADB device and install APK
-        shell: powershell
+        shell: powershell -NoProfile -ExecutionPolicy Bypass -File {0}
         run: |
           $ErrorActionPreference = 'Stop'
           $adb = 'C:\Users\droid\AppData\Local\Android\Sdk\platform-tools\adb.exe'
