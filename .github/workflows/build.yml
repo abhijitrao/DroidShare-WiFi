@@ -68,7 +68,7 @@ jobs:
 
   deploy_android:
     name: Install APK on connected Android device
-    runs-on: [self-hosted, Windows, X64, droidshare-android]
+    runs-on: [self-hosted, Windows, X64]
     needs: android
     if: github.event_name != 'pull_request'
     steps:
